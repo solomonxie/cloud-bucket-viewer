@@ -1,4 +1,4 @@
-import { S3Client, formatSize } from "./lib/s3-client.js";
+import { S3Client, formatSize, detectBucketRegion } from "./lib/s3-client.js";
 import {
   getConnections,
   upsertConnection,
@@ -27,14 +27,18 @@ const els = {
   connectionForm: $("connectionForm"),
   connectionModalTitle: $("connectionModalTitle"),
   connId: $("connId"),
-  connName: $("connName"),
+  connBucket: $("connBucket"),
   connAccessKey: $("connAccessKey"),
   connSecretKey: $("connSecretKey"),
+  connPrefix: $("connPrefix"),
+  connName: $("connName"),
   connRegion: $("connRegion"),
   connEndpoint: $("connEndpoint"),
   connPathStyle: $("connPathStyle"),
   connDeleteBtn: $("connDeleteBtn"),
   connCancelBtn: $("connCancelBtn"),
+  connSaveBtn: $("connSaveBtn"),
+  connFormStatus: $("connFormStatus"),
   toggleSecretBtn: $("toggleSecretBtn"),
   manageModal: $("manageModal"),
   manageList: $("manageList"),
@@ -77,18 +81,29 @@ function activeConnection() {
   return state.connections.find((c) => c.id === state.activeId) || null;
 }
 
-function setStatus(message, { error = false, loading = false } = {}) {
-  els.status.hidden = !message;
-  els.status.classList.toggle("error", error);
-  els.status.classList.toggle("loading", loading);
+function applyStatus(el, message, { error = false, loading = false } = {}) {
+  el.hidden = !message;
+  el.classList.toggle("error", error);
+  el.classList.toggle("loading", loading);
   const iconName = error ? "alertCircle" : loading ? "refresh" : "";
-  els.status.innerHTML = message
+  el.innerHTML = message
     ? `${iconName ? icon(iconName) : ""}<span>${escapeHtml(message)}</span>`
     : "";
 }
 
+function setStatus(message, opts) {
+  applyStatus(els.status, message, opts);
+}
+
+function setFormStatus(message, opts) {
+  applyStatus(els.connFormStatus, message, opts);
+}
+
 function escapeHtml(str) {
-  return str.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  return String(str ?? "").replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
 }
 
 async function withStatus(promise, busyMessage) {
@@ -200,8 +215,8 @@ function renderConnectionSelect() {
 async function onConnectionChanged() {
   const conn = activeConnection();
   state.client = conn ? new S3Client(conn) : null;
-  state.bucket = null;
-  state.prefix = "";
+  state.bucket = conn?.bucket || null;
+  state.prefix = conn?.prefix || "";
   state.token = null;
   await chrome.storage.local.set({ lastConnectionId: state.activeId });
   updateToolbar();
@@ -220,11 +235,12 @@ function updateToolbar() {
 function renderBreadcrumb() {
   els.breadcrumb.innerHTML = "";
   const conn = activeConnection();
-  const crumbs = [
-    { label: conn ? conn.name : "—", iconName: "home", action: () => navigateToBuckets() },
-  ];
-  if (state.bucket) {
-    crumbs.push({ label: state.bucket, iconName: "bucket", action: () => navigateToPrefix("") });
+  const crumbs = [];
+  if (conn) {
+    crumbs.push({ label: conn.name, iconName: "home", action: () => navigateToPrefix(conn.prefix || "") });
+    if (conn.bucket) {
+      crumbs.push({ label: conn.bucket, iconName: "bucket", action: () => navigateToPrefix("") });
+    }
     const parts = state.prefix.split("/").filter(Boolean);
     let acc = "";
     for (const part of parts) {
@@ -232,6 +248,8 @@ function renderBreadcrumb() {
       const target = acc;
       crumbs.push({ label: part, action: () => navigateToPrefix(target) });
     }
+  } else {
+    crumbs.push({ label: "—", iconName: "home", action: () => {} });
   }
   crumbs.forEach((crumb, i) => {
     if (i > 0) {
@@ -245,24 +263,6 @@ function renderBreadcrumb() {
     btn.addEventListener("click", crumb.action);
     els.breadcrumb.appendChild(btn);
   });
-}
-
-function navigateToBuckets() {
-  state.bucket = null;
-  state.prefix = "";
-  state.token = null;
-  updateToolbar();
-  renderBreadcrumb();
-  refresh();
-}
-
-function navigateToBucket(name) {
-  state.bucket = name;
-  state.prefix = "";
-  state.token = null;
-  updateToolbar();
-  renderBreadcrumb();
-  refresh();
 }
 
 function navigateToPrefix(prefix) {
@@ -279,21 +279,24 @@ async function refresh() {
   els.fileList.innerHTML = "";
   els.loadMoreBtn.hidden = true;
   if (!state.client) {
-    renderEmptyState("home", "Add a connection to get started", "Click + in the top bar.");
+    renderEmptyState("home", "Add a connection to get started", "Click + next to the connection dropdown.");
+    return;
+  }
+  if (!state.bucket) {
+    renderEmptyState(
+      "bucket",
+      "This connection has no bucket set",
+      "Edit it and add a bucket name.",
+      { label: "Edit connection", onClick: () => openConnectionModal(activeConnection()) }
+    );
     return;
   }
   await loadMore(true);
 }
 
 async function loadMore(reset = false) {
-  if (!state.client) return;
+  if (!state.client || !state.bucket) return;
   try {
-    if (!state.bucket) {
-      const buckets = await withStatus(state.client.listBuckets(), "Loading buckets…");
-      renderBucketRows(buckets, reset);
-      els.loadMoreBtn.hidden = true;
-      return;
-    }
     const data = await withStatus(
       state.client.listObjects(state.bucket, state.prefix, state.token),
       "Loading…"
@@ -306,13 +309,20 @@ async function loadMore(reset = false) {
   }
 }
 
-function renderEmptyState(iconName, primary, secondary) {
+function renderEmptyState(iconName, primary, secondary, action) {
   els.fileList.innerHTML = `
     <div class="empty-state">
       ${icon(iconName)}
       <div class="primary">${escapeHtml(primary)}</div>
       <div>${escapeHtml(secondary)}</div>
     </div>`;
+  if (action) {
+    const btn = document.createElement("button");
+    btn.className = "btn primary";
+    btn.textContent = action.label;
+    btn.addEventListener("click", action.onClick);
+    els.fileList.querySelector(".empty-state").appendChild(btn);
+  }
 }
 
 function makeRow({ badgeIcon, badgeClass, name, meta, onOpen, actions }) {
@@ -358,23 +368,6 @@ function makeRow({ badgeIcon, badgeClass, name, meta, onOpen, actions }) {
   row.appendChild(actionsEl);
 
   return row;
-}
-
-function renderBucketRows(buckets, reset) {
-  if (reset) els.fileList.innerHTML = "";
-  for (const bucket of buckets) {
-    els.fileList.appendChild(
-      makeRow({
-        badgeIcon: "bucket",
-        badgeClass: "folder",
-        name: bucket.name,
-        onOpen: () => navigateToBucket(bucket.name),
-      })
-    );
-  }
-  if (buckets.length === 0) {
-    renderEmptyState("bucket", "No buckets found", "This connection has no accessible buckets.");
-  }
 }
 
 function renderObjectRows(data, reset) {
@@ -537,41 +530,80 @@ els.fileList.addEventListener("drop", async (e) => {
 function openConnectionModal(conn) {
   els.connectionModalTitle.textContent = conn ? "Edit connection" : "Add connection";
   els.connId.value = conn?.id || "";
-  els.connName.value = conn?.name || "";
+  els.connBucket.value = conn?.bucket || "";
   els.connAccessKey.value = conn?.accessKeyId || "";
   els.connSecretKey.value = conn?.secretAccessKey || "";
   els.connSecretKey.type = "password";
   els.toggleSecretBtn.innerHTML = icon("eye");
-  els.connRegion.value = conn?.region || "us-east-1";
+  els.connPrefix.value = conn?.prefix || "";
+  els.connName.value = conn?.name && conn.name !== conn.bucket ? conn.name : "";
+  els.connRegion.value = conn?.region || "";
   els.connEndpoint.value = conn?.endpoint || "";
   els.connPathStyle.checked = !!conn?.pathStyle;
   els.connDeleteBtn.hidden = !conn;
+  setFormStatus("");
   els.connectionModal.showModal();
 }
+
+// Bucket names don't encode a region, but the field is still enough to look
+// one up (see detectBucketRegion) — do it as soon as the user leaves the
+// field so Advanced/Region is already filled in if they open it.
+els.connBucket.addEventListener("blur", async () => {
+  const bucket = els.connBucket.value.trim();
+  if (!bucket || els.connRegion.value.trim()) return;
+  els.connRegion.placeholder = "detecting…";
+  els.connRegion.value = (await detectBucketRegion(bucket)) || "";
+  els.connRegion.placeholder = "auto-detected from bucket";
+});
 
 async function saveConnectionFromForm() {
   const endpoint = els.connEndpoint.value.trim();
   if (endpoint) {
     const granted = await chrome.permissions.request({ origins: [`https://${endpoint}/*`] });
     if (!granted) {
-      setStatus("Permission for the custom endpoint was not granted.", { error: true });
+      setFormStatus("Permission for the custom endpoint was not granted.", { error: true });
       return false;
     }
   }
+
+  const bucket = els.connBucket.value.trim();
+  let region = els.connRegion.value.trim();
   const conn = {
     id: els.connId.value || newConnectionId(),
-    name: els.connName.value.trim(),
+    bucket,
+    name: els.connName.value.trim() || bucket,
     accessKeyId: els.connAccessKey.value.trim(),
     secretAccessKey: els.connSecretKey.value.trim(),
-    region: els.connRegion.value.trim() || "us-east-1",
+    prefix: els.connPrefix.value.trim().replace(/^\/+/, ""),
     endpoint,
     pathStyle: els.connPathStyle.checked,
   };
-  state.connections = await upsertConnection(conn);
-  state.activeId = conn.id;
-  renderConnectionSelect();
-  await onConnectionChanged();
-  return true;
+
+  els.connSaveBtn.disabled = true;
+  try {
+    if (!region && !endpoint) {
+      setFormStatus("Detecting region…", { loading: true });
+      region = (await detectBucketRegion(bucket)) || "us-east-1";
+    }
+    conn.region = region || "us-east-1";
+
+    setFormStatus("Checking bucket access…", { loading: true });
+    try {
+      await new S3Client(conn).listObjects(conn.bucket, conn.prefix, undefined);
+    } catch (err) {
+      setFormStatus(`Couldn't access that bucket: ${err.message}`, { error: true });
+      return false;
+    }
+
+    state.connections = await upsertConnection(conn);
+    state.activeId = conn.id;
+    renderConnectionSelect();
+    await onConnectionChanged();
+    setFormStatus("");
+    return true;
+  } finally {
+    els.connSaveBtn.disabled = false;
+  }
 }
 
 async function deleteConnectionById(id) {
@@ -603,7 +635,10 @@ function renderManageList() {
 
     const name = document.createElement("span");
     name.className = "name";
-    name.textContent = conn.name;
+    name.innerHTML =
+      conn.name === conn.bucket
+        ? escapeHtml(conn.name)
+        : `${escapeHtml(conn.name)}<small>${escapeHtml(conn.bucket)}</small>`;
     li.appendChild(name);
 
     const editBtn = document.createElement("button");

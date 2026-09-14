@@ -4,12 +4,16 @@ function text(el, tag) {
   return el.getElementsByTagName(tag)[0]?.textContent ?? "";
 }
 
-function parseListBuckets(xml) {
-  const doc = new DOMParser().parseFromString(xml, "application/xml");
-  return [...doc.getElementsByTagName("Bucket")].map((b) => ({
-    name: text(b, "Name"),
-    creationDate: text(b, "CreationDate"),
-  }));
+// Bucket region isn't derivable from its name, but S3's legacy global
+// endpoint reports it in a response header even on an unauthenticated,
+// unsigned request — so we can look it up before the user supplies a region.
+export async function detectBucketRegion(bucket) {
+  try {
+    const resp = await fetch(`https://${bucket}.s3.amazonaws.com/`, { method: "HEAD" });
+    return resp.headers.get("x-amz-bucket-region") || null;
+  } catch {
+    return null;
+  }
 }
 
 function parseListObjects(xml) {
@@ -77,14 +81,15 @@ export class S3Client {
     const resp = await fetch(url.toString(), { method, headers: signed, body });
     if (!resp.ok) {
       const body = await resp.text().catch(() => "");
-      throw new Error(`S3 ${method} ${resp.status} ${resp.statusText}: ${body.slice(0, 300)}`);
+      // S3 error bodies are small XML docs: <Error><Code>..</Code><Message>..</Message></Error>.
+      // Surface that instead of dumping the raw XML when present.
+      const code = body.match(/<Code>([^<]*)<\/Code>/)?.[1];
+      const message = body.match(/<Message>([^<]*)<\/Message>/)?.[1];
+      throw new Error(
+        code && message ? `${code}: ${message}` : `S3 ${method} ${resp.status} ${resp.statusText}`
+      );
     }
     return resp;
-  }
-
-  async listBuckets() {
-    const resp = await this.request("GET", "", "");
-    return parseListBuckets(await resp.text());
   }
 
   async listObjects(bucket, prefix, continuationToken) {
