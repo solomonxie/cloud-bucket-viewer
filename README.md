@@ -1,0 +1,50 @@
+# S3 Bucket Viewer
+
+A Chrome side panel for browsing S3 buckets like a file explorer.
+
+Add one or more connections (access key + secret key, stored only in your
+browser, exportable/importable as JSON). Pick a connection, browse buckets
+and folders, and download, copy, move or delete objects — all from a side
+panel that stays open next to whatever tab you're on. Works with AWS S3 and
+S3-compatible services (Cloudflare R2, MinIO, etc).
+
+No build step, no AWS SDK — plain JS signing S3 requests directly with
+SigV4. See [docs/design.md](docs/design.md) and
+[docs/implementation.md](docs/implementation.md) for how it's built.
+
+## Features
+
+- Multiple named connections, switchable from the toolbar.
+- Keys stored locally (`chrome.storage.local`) only; export/import as JSON.
+- Browse buckets → folders → files with breadcrumb navigation.
+- Download, copy, move, delete files. Create folders, recursive-delete folders.
+- Upload a file into the current folder.
+- Custom endpoint + path-style option for non-AWS S3-compatible services.
+
+## Install
+
+1. `make zip` (or just point Chrome at `extension/` directly, see below).
+2. Open `chrome://extensions`, enable **Developer mode**.
+3. **Load unpacked** → select the `extension/` folder (no zip needed for
+   local dev), or drag `dist/s3-viewer.zip` onto the page.
+4. Click the toolbar icon to open the side panel, then **+** to add a
+   connection.
+
+## Development
+
+```sh
+make lint   # syntax-check every .js file + manifest.json
+make zip    # build dist/s3-viewer.zip
+make icons  # regenerate extension/icons/*.png
+make clean  # remove dist/
+```
+
+No dependencies to install — everything runs on the system's `node`,
+`python3` and `zip`.
+
+## Security note
+
+Access keys and secret keys are stored in plaintext in
+`chrome.storage.local` (never synced) and are sent only to the S3 endpoint
+the connection names. Exporting connections writes those secrets to a
+plaintext JSON file — handle exported files like any other credential file.
