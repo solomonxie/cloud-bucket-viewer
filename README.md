@@ -2,11 +2,12 @@
 
 A Chrome side panel for browsing S3 buckets like a file explorer.
 
-Add one or more connections (access key + secret key, stored only in your
-browser, exportable/importable as JSON). Pick a connection, browse buckets
-and folders, and download, copy, move or delete objects — all from a side
-panel that stays open next to whatever tab you're on. Works with AWS S3 and
-S3-compatible services (Cloudflare R2, MinIO, etc).
+Add one or more connections — just a bucket name, access key and secret key
+(everything else is optional or auto-detected) — stored only in your
+browser, exportable/importable as JSON. Pick a connection and land straight
+in that bucket, then browse folders and download, copy, move or delete
+objects — all from a side panel that stays open next to whatever tab you're
+on. Works with AWS S3 and S3-compatible services (Cloudflare R2, MinIO, etc).
 
 No build step, no AWS SDK — plain JS signing S3 requests directly with
 SigV4. See [docs/design.md](docs/design.md) and
@@ -14,11 +15,16 @@ SigV4. See [docs/design.md](docs/design.md) and
 
 ## Features
 
-- Multiple named connections, switchable from the toolbar.
+- Multiple named connections, each scoped to one bucket, switchable from
+  the toolbar. Adding one only strictly needs a bucket name, access key and
+  secret key — region is auto-detected from the bucket, name defaults to
+  the bucket name, and a starting key prefix is optional.
+- Save validates the connection against S3 before storing it, with progress
+  shown inline (region detection, then a real access check).
 - Keys stored locally (`chrome.storage.local`) only; export/import as JSON.
-- Browse buckets → folders → files with breadcrumb navigation.
+- Browse folders → files with breadcrumb navigation.
 - Download, copy, move, delete files. Create folders, recursive-delete folders.
-- Upload a file into the current folder.
+- Upload a file (or drag-and-drop one) into the current folder.
 - Custom endpoint + path-style option for non-AWS S3-compatible services.
 
 ## Install
