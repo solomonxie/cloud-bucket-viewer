@@ -15,6 +15,7 @@ on it.
 | `extension/lib/sigv4.js` | `signRequest()` — AWS Signature V4 |
 | `extension/lib/s3-client.js` | `S3Client` class — REST calls + XML parsing, `formatSize()` |
 | `extension/lib/store.js` | connections CRUD, export/import, in `chrome.storage.local` |
+| `extension/lib/icons.js` | inline-SVG icon set (`icon()`) + `iconForFileName()` by extension |
 | `scripts/gen_icons.py` | regenerates `extension/icons/*.png` (stdlib only, no Pillow) |
 
 ## SigV4 signer (`lib/sigv4.js`)
@@ -71,8 +72,15 @@ the file rows — they're represented by the `CommonPrefixes` folder row
 instead.
 
 Destructive actions (delete, recursive folder delete) confirm via
-`window.confirm()`; copy/move destination is a `window.prompt()` — no extra
-modal markup for a single text field.
+`confirmDialog()`, and copy/move/new-folder destinations use `promptDialog()`
+— both built on `<dialog>` (matching the connection/manage modals) instead of
+`window.confirm`/`window.prompt`, so they pick up the extension's own styling
+and dark-mode colors rather than the browser's native alert chrome.
+
+Files get a type-specific icon (`iconForFileName()` in `lib/icons.js`, keyed
+off extension) instead of one generic file glyph. Dropping files onto the
+list uploads them (`dragover`/`drop` on `#fileList`), same code path as the
+Upload button.
 
 ## Adding a new S3 operation
 
