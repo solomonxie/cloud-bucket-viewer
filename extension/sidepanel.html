@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>S3 Bucket Viewer</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <select id="connectionSelect" aria-label="Connection"></select>
+      <button id="addConnBtn" title="Add connection">+</button>
+      <button id="manageBtn" title="Manage connections">&#9881;</button>
+    </header>
+
+    <nav id="breadcrumb" class="breadcrumb"></nav>
+
+    <div class="toolbar">
+      <button id="refreshBtn" title="Refresh">&#8635;</button>
+      <button id="newFolderBtn" title="New folder" disabled>New folder</button>
+      <button id="uploadBtn" title="Upload file" disabled>Upload</button>
+      <input type="file" id="uploadInput" hidden />
+    </div>
+
+    <div id="status" class="status" hidden></div>
+
+    <main id="fileList" class="file-list"></main>
+    <button id="loadMoreBtn" class="load-more" hidden>Load more</button>
+
+    <dialog id="connectionModal">
+      <form id="connectionForm" method="dialog">
+        <h2 id="connectionModalTitle">Add connection</h2>
+        <input type="hidden" id="connId" />
+        <label>Name<input id="connName" required /></label>
+        <label>Access key ID<input id="connAccessKey" required autocomplete="off" /></label>
+        <label>Secret access key
+          <input id="connSecretKey" type="password" required autocomplete="off" />
+        </label>
+        <label>Region<input id="connRegion" placeholder="us-east-1" /></label>
+        <label>Custom endpoint (optional, for S3-compatible services)
+          <input id="connEndpoint" placeholder="e.g. abc123.r2.cloudflarestorage.com" />
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" id="connPathStyle" /> Use path-style URLs
+        </label>
+        <p class="hint">Keys are stored only in this browser (chrome.storage.local).</p>
+        <div class="modal-actions">
+          <button type="button" id="connDeleteBtn" class="danger" hidden>Delete</button>
+          <span class="spacer"></span>
+          <button type="button" id="connCancelBtn">Cancel</button>
+          <button type="submit" id="connSaveBtn">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="manageModal">
+      <h2>Manage connections</h2>
+      <ul id="manageList" class="manage-list"></ul>
+      <div class="modal-actions">
+        <button id="importBtn">Import</button>
+        <button id="exportBtn">Export</button>
+        <input type="file" id="importInput" accept="application/json" hidden />
+        <span class="spacer"></span>
+        <button id="manageCloseBtn">Close</button>
+      </div>
+    </dialog>
+
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>
