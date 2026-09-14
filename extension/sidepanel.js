@@ -7,6 +7,7 @@ import {
   parseImport,
   newConnectionId,
 } from "./lib/store.js";
+import { icon, iconForFileName } from "./lib/icons.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -34,12 +35,25 @@ const els = {
   connPathStyle: $("connPathStyle"),
   connDeleteBtn: $("connDeleteBtn"),
   connCancelBtn: $("connCancelBtn"),
+  toggleSecretBtn: $("toggleSecretBtn"),
   manageModal: $("manageModal"),
   manageList: $("manageList"),
   importBtn: $("importBtn"),
   exportBtn: $("exportBtn"),
   importInput: $("importInput"),
   manageCloseBtn: $("manageCloseBtn"),
+  confirmDialog: $("confirmDialog"),
+  confirmIcon: $("confirmIcon"),
+  confirmTitle: $("confirmTitle"),
+  confirmMessage: $("confirmMessage"),
+  confirmOkBtn: $("confirmOkBtn"),
+  confirmCancelBtn: $("confirmCancelBtn"),
+  promptDialog: $("promptDialog"),
+  promptForm: $("promptForm"),
+  promptTitle: $("promptTitle"),
+  promptLabel: $("promptLabel"),
+  promptInput: $("promptInput"),
+  promptCancelBtn: $("promptCancelBtn"),
 };
 
 const state = {
@@ -51,30 +65,107 @@ const state = {
   token: null,
 };
 
+// Static icon-only controls: filled in once so sidepanel.html stays markup-only.
+els.addConnBtn.innerHTML = icon("plus");
+els.manageBtn.innerHTML = icon("settings");
+els.refreshBtn.innerHTML = icon("refresh");
+els.newFolderBtn.innerHTML = `${icon("folderPlus")}<span>New folder</span>`;
+els.uploadBtn.innerHTML = `${icon("upload")}<span>Upload</span>`;
+els.toggleSecretBtn.innerHTML = icon("eye");
+
 function activeConnection() {
   return state.connections.find((c) => c.id === state.activeId) || null;
 }
 
-function setStatus(message, isError = false) {
-  els.status.textContent = message || "";
+function setStatus(message, { error = false, loading = false } = {}) {
   els.status.hidden = !message;
-  els.status.classList.toggle("error", isError);
+  els.status.classList.toggle("error", error);
+  els.status.classList.toggle("loading", loading);
+  const iconName = error ? "alertCircle" : loading ? "refresh" : "";
+  els.status.innerHTML = message
+    ? `${iconName ? icon(iconName) : ""}<span>${escapeHtml(message)}</span>`
+    : "";
+}
+
+function escapeHtml(str) {
+  return str.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 async function withStatus(promise, busyMessage) {
-  setStatus(busyMessage);
+  setStatus(busyMessage, { loading: true });
   try {
     const result = await promise;
     setStatus("");
     return result;
   } catch (err) {
     console.error(err);
-    setStatus(err.message || String(err), true);
+    setStatus(err.message || String(err), { error: true });
     throw err;
   }
 }
 
-// --- Connections ---------------------------------------------------------
+function formatDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+// --- Confirm / prompt dialogs (replace window.confirm/prompt) --------------
+
+function confirmDialog({ title, message, confirmLabel = "Delete" }) {
+  return new Promise((resolve) => {
+    els.confirmTitle.textContent = title;
+    els.confirmMessage.textContent = message;
+    els.confirmIcon.innerHTML = icon("trash");
+    els.confirmOkBtn.textContent = confirmLabel;
+
+    const cleanup = (result) => {
+      els.confirmDialog.close();
+      els.confirmOkBtn.removeEventListener("click", onOk);
+      els.confirmCancelBtn.removeEventListener("click", onCancel);
+      els.confirmDialog.removeEventListener("cancel", onCancel);
+      resolve(result);
+    };
+    const onOk = () => cleanup(true);
+    const onCancel = () => cleanup(false);
+
+    els.confirmOkBtn.addEventListener("click", onOk);
+    els.confirmCancelBtn.addEventListener("click", onCancel);
+    els.confirmDialog.addEventListener("cancel", onCancel);
+    els.confirmDialog.showModal();
+  });
+}
+
+function promptDialog({ title, label, value = "" }) {
+  return new Promise((resolve) => {
+    els.promptTitle.textContent = title;
+    els.promptLabel.textContent = label;
+    els.promptInput.value = value;
+
+    const cleanup = (result) => {
+      els.promptDialog.close();
+      els.promptForm.removeEventListener("submit", onSubmit);
+      els.promptCancelBtn.removeEventListener("click", onCancel);
+      els.promptDialog.removeEventListener("cancel", onCancel);
+      resolve(result);
+    };
+    const onSubmit = (e) => {
+      e.preventDefault();
+      cleanup(els.promptInput.value.trim() || null);
+    };
+    const onCancel = () => cleanup(null);
+
+    els.promptForm.addEventListener("submit", onSubmit);
+    els.promptCancelBtn.addEventListener("click", onCancel);
+    els.promptDialog.addEventListener("cancel", onCancel);
+    els.promptDialog.showModal();
+    els.promptInput.focus();
+    els.promptInput.select();
+  });
+}
+
+// --- Connections -----------------------------------------------------------
 
 async function loadConnections() {
   state.connections = await getConnections();
@@ -124,14 +215,16 @@ function updateToolbar() {
   els.uploadBtn.disabled = !inBucket;
 }
 
-// --- Navigation ------------------------------------------------------------
+// --- Navigation --------------------------------------------------------------
 
 function renderBreadcrumb() {
   els.breadcrumb.innerHTML = "";
   const conn = activeConnection();
-  const crumbs = [{ label: conn ? conn.name : "—", action: () => navigateToBuckets() }];
+  const crumbs = [
+    { label: conn ? conn.name : "—", iconName: "home", action: () => navigateToBuckets() },
+  ];
   if (state.bucket) {
-    crumbs.push({ label: state.bucket, action: () => navigateToPrefix("") });
+    crumbs.push({ label: state.bucket, iconName: "bucket", action: () => navigateToPrefix("") });
     const parts = state.prefix.split("/").filter(Boolean);
     let acc = "";
     for (const part of parts) {
@@ -144,11 +237,11 @@ function renderBreadcrumb() {
     if (i > 0) {
       const sep = document.createElement("span");
       sep.className = "sep";
-      sep.textContent = " / ";
+      sep.innerHTML = icon("chevronRight");
       els.breadcrumb.appendChild(sep);
     }
     const btn = document.createElement("button");
-    btn.textContent = crumb.label;
+    btn.innerHTML = `${crumb.iconName ? icon(crumb.iconName) : ""}<span>${escapeHtml(crumb.label)}</span>`;
     btn.addEventListener("click", crumb.action);
     els.breadcrumb.appendChild(btn);
   });
@@ -179,13 +272,16 @@ function navigateToPrefix(prefix) {
   refresh();
 }
 
-// --- Listing ---------------------------------------------------------------
+// --- Listing -----------------------------------------------------------------
 
 async function refresh() {
   state.token = null;
   els.fileList.innerHTML = "";
   els.loadMoreBtn.hidden = true;
-  if (!state.client) return;
+  if (!state.client) {
+    renderEmptyState("home", "Add a connection to get started", "Click + in the top bar.");
+    return;
+  }
   await loadMore(true);
 }
 
@@ -210,25 +306,36 @@ async function loadMore(reset = false) {
   }
 }
 
-function makeRow({ icon, name, meta, onOpen, actions }) {
+function renderEmptyState(iconName, primary, secondary) {
+  els.fileList.innerHTML = `
+    <div class="empty-state">
+      ${icon(iconName)}
+      <div class="primary">${escapeHtml(primary)}</div>
+      <div>${escapeHtml(secondary)}</div>
+    </div>`;
+}
+
+function makeRow({ badgeIcon, badgeClass, name, meta, onOpen, actions }) {
   const row = document.createElement("div");
   row.className = "row";
 
-  const iconEl = document.createElement("span");
-  iconEl.className = "icon";
-  iconEl.textContent = icon;
-  row.appendChild(iconEl);
+  const badge = document.createElement("span");
+  badge.className = badgeClass ? `badge ${badgeClass}` : "badge";
+  badge.innerHTML = icon(badgeIcon);
+  row.appendChild(badge);
 
   if (onOpen) {
     const btn = document.createElement("button");
     btn.className = "name-btn";
     btn.textContent = name;
+    btn.title = name;
     btn.addEventListener("click", onOpen);
     row.appendChild(btn);
   } else {
     const nameEl = document.createElement("span");
     nameEl.className = "name";
     nameEl.textContent = name;
+    nameEl.title = name;
     row.appendChild(nameEl);
   }
 
@@ -241,9 +348,10 @@ function makeRow({ icon, name, meta, onOpen, actions }) {
   actionsEl.className = "actions";
   for (const action of actions || []) {
     const btn = document.createElement("button");
-    btn.className = "link";
-    btn.textContent = action.label;
-    btn.title = action.title || action.label;
+    btn.className = action.danger ? "icon-btn danger-hover" : "icon-btn";
+    btn.innerHTML = icon(action.iconName);
+    btn.title = action.title;
+    btn.setAttribute("aria-label", action.title);
     btn.addEventListener("click", action.onClick);
     actionsEl.appendChild(btn);
   }
@@ -257,13 +365,16 @@ function renderBucketRows(buckets, reset) {
   for (const bucket of buckets) {
     els.fileList.appendChild(
       makeRow({
-        icon: "\u{1F5C2}",
+        badgeIcon: "bucket",
+        badgeClass: "folder",
         name: bucket.name,
         onOpen: () => navigateToBucket(bucket.name),
       })
     );
   }
-  if (buckets.length === 0) setStatus("No buckets found for this connection.");
+  if (buckets.length === 0) {
+    renderEmptyState("bucket", "No buckets found", "This connection has no accessible buckets.");
+  }
 }
 
 function renderObjectRows(data, reset) {
@@ -272,11 +383,12 @@ function renderObjectRows(data, reset) {
     const name = prefix.slice(state.prefix.length).replace(/\/$/, "");
     els.fileList.appendChild(
       makeRow({
-        icon: "\u{1F4C1}",
+        badgeIcon: "folder",
+        badgeClass: "folder",
         name,
         onOpen: () => navigateToPrefix(prefix),
         actions: [
-          { label: "Del", title: "Delete folder", onClick: () => deleteFolder(prefix) },
+          { iconName: "trash", title: "Delete folder", danger: true, onClick: () => deleteFolder(prefix) },
         ],
       })
     );
@@ -287,24 +399,24 @@ function renderObjectRows(data, reset) {
     if (!name) continue;
     els.fileList.appendChild(
       makeRow({
-        icon: "\u{1F4C4}",
+        badgeIcon: iconForFileName(name),
         name,
-        meta: formatSize(obj.size),
+        meta: `${formatSize(obj.size)} · ${formatDate(obj.lastModified)}`,
         actions: [
-          { label: "Get", title: "Download", onClick: () => downloadObject(obj.key, name) },
-          { label: "Cp", title: "Copy to…", onClick: () => copyObject(obj.key) },
-          { label: "Mv", title: "Move to…", onClick: () => moveObject(obj.key) },
-          { label: "Del", title: "Delete", onClick: () => deleteObject(obj.key) },
+          { iconName: "download", title: "Download", onClick: () => downloadObject(obj.key, name) },
+          { iconName: "copy", title: "Copy to…", onClick: () => copyObject(obj.key) },
+          { iconName: "move", title: "Move to…", onClick: () => moveObject(obj.key) },
+          { iconName: "trash", title: "Delete", danger: true, onClick: () => deleteObject(obj.key) },
         ],
       })
     );
   }
   if (data.prefixes.length === 0 && data.objects.length === 0) {
-    setStatus("This folder is empty.");
+    renderEmptyState("inbox", "This folder is empty", "Upload a file or drop one here.");
   }
 }
 
-// --- Object actions ---------------------------------------------------------
+// --- Object actions ------------------------------------------------------------
 
 async function downloadObject(key, name) {
   try {
@@ -320,12 +432,12 @@ async function downloadObject(key, name) {
   }
 }
 
-function promptDestinationKey(currentKey) {
-  return window.prompt("Destination key (full path within this bucket):", currentKey);
-}
-
 async function copyObject(key) {
-  const dest = promptDestinationKey(key);
+  const dest = await promptDialog({
+    title: "Copy to…",
+    label: "Destination key (full path within this bucket)",
+    value: key,
+  });
   if (!dest || dest === key) return;
   try {
     await withStatus(state.client.copyObject(state.bucket, dest, state.bucket, key), "Copying…");
@@ -336,7 +448,11 @@ async function copyObject(key) {
 }
 
 async function moveObject(key) {
-  const dest = promptDestinationKey(key);
+  const dest = await promptDialog({
+    title: "Move to…",
+    label: "Destination key (full path within this bucket)",
+    value: key,
+  });
   if (!dest || dest === key) return;
   try {
     await withStatus(state.client.moveObject(state.bucket, dest, state.bucket, key), "Moving…");
@@ -347,7 +463,8 @@ async function moveObject(key) {
 }
 
 async function deleteObject(key) {
-  if (!window.confirm(`Delete ${key}?`)) return;
+  const ok = await confirmDialog({ title: "Delete file?", message: key });
+  if (!ok) return;
   try {
     await withStatus(state.client.deleteObject(state.bucket, key), "Deleting…");
     await refresh();
@@ -357,10 +474,14 @@ async function deleteObject(key) {
 }
 
 async function deleteFolder(prefix) {
-  if (!window.confirm(`Delete everything under ${prefix}? This cannot be undone.`)) return;
+  const ok = await confirmDialog({
+    title: "Delete folder?",
+    message: `Everything under ${prefix} will be permanently deleted.`,
+  });
+  if (!ok) return;
   try {
     await withStatus(
-      state.client.deletePrefix(state.bucket, prefix, (n) => setStatus(`Deleted ${n}…`)),
+      state.client.deletePrefix(state.bucket, prefix, (n) => setStatus(`Deleted ${n}…`, { loading: true })),
       "Deleting folder…"
     );
     await refresh();
@@ -370,7 +491,7 @@ async function deleteFolder(prefix) {
 }
 
 async function createFolder() {
-  const name = window.prompt("New folder name:");
+  const name = await promptDialog({ title: "New folder", label: "Folder name" });
   if (!name) return;
   const key = state.prefix + name.replace(/\/+$/, "") + "/";
   try {
@@ -381,20 +502,37 @@ async function createFolder() {
   }
 }
 
-async function uploadFile(file) {
-  const key = state.prefix + file.name;
-  try {
-    await withStatus(
-      state.client.putObject(state.bucket, key, file, file.type || "application/octet-stream"),
-      `Uploading ${file.name}…`
-    );
-    await refresh();
-  } catch {
-    // withStatus already surfaced the error
+async function uploadFiles(files) {
+  for (const file of files) {
+    const key = state.prefix + file.name;
+    try {
+      await withStatus(
+        state.client.putObject(state.bucket, key, file, file.type || "application/octet-stream"),
+        `Uploading ${file.name}…`
+      );
+    } catch {
+      // withStatus already surfaced the error; keep going with remaining files
+    }
   }
+  await refresh();
 }
 
-// --- Connection modal --------------------------------------------------------
+// --- Drag and drop upload ---------------------------------------------------
+
+els.fileList.addEventListener("dragover", (e) => {
+  if (!state.bucket) return;
+  e.preventDefault();
+  els.fileList.classList.add("drag-over");
+});
+els.fileList.addEventListener("dragleave", () => els.fileList.classList.remove("drag-over"));
+els.fileList.addEventListener("drop", async (e) => {
+  e.preventDefault();
+  els.fileList.classList.remove("drag-over");
+  if (!state.bucket || !e.dataTransfer.files.length) return;
+  await uploadFiles(e.dataTransfer.files);
+});
+
+// --- Connection modal ----------------------------------------------------------
 
 function openConnectionModal(conn) {
   els.connectionModalTitle.textContent = conn ? "Edit connection" : "Add connection";
@@ -402,6 +540,8 @@ function openConnectionModal(conn) {
   els.connName.value = conn?.name || "";
   els.connAccessKey.value = conn?.accessKeyId || "";
   els.connSecretKey.value = conn?.secretAccessKey || "";
+  els.connSecretKey.type = "password";
+  els.toggleSecretBtn.innerHTML = icon("eye");
   els.connRegion.value = conn?.region || "us-east-1";
   els.connEndpoint.value = conn?.endpoint || "";
   els.connPathStyle.checked = !!conn?.pathStyle;
@@ -414,7 +554,7 @@ async function saveConnectionFromForm() {
   if (endpoint) {
     const granted = await chrome.permissions.request({ origins: [`https://${endpoint}/*`] });
     if (!granted) {
-      setStatus("Permission for the custom endpoint was not granted.", true);
+      setStatus("Permission for the custom endpoint was not granted.", { error: true });
       return false;
     }
   }
@@ -434,34 +574,59 @@ async function saveConnectionFromForm() {
   return true;
 }
 
-async function deleteActiveFormConnection() {
-  const id = els.connId.value;
-  if (!id || !window.confirm("Delete this connection?")) return;
+async function deleteConnectionById(id) {
+  const conn = state.connections.find((c) => c.id === id);
+  const ok = await confirmDialog({
+    title: "Delete connection?",
+    message: `"${conn?.name}" and its stored keys will be removed from this browser.`,
+  });
+  if (!ok) return;
   state.connections = await deleteConnection(id);
-  state.activeId = state.connections[0]?.id || null;
+  if (state.activeId === id) state.activeId = state.connections[0]?.id || null;
   renderConnectionSelect();
-  els.connectionModal.close();
+  renderManageList();
   await onConnectionChanged();
 }
 
-// --- Manage modal --------------------------------------------------------
+// --- Manage modal ----------------------------------------------------------
 
 function renderManageList() {
   els.manageList.innerHTML = "";
   for (const conn of state.connections) {
     const li = document.createElement("li");
+    li.className = conn.id === state.activeId ? "active" : "";
+
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.innerHTML = icon("bucket");
+    li.appendChild(badge);
+
     const name = document.createElement("span");
     name.className = "name";
     name.textContent = conn.name;
     li.appendChild(name);
+
     const editBtn = document.createElement("button");
-    editBtn.textContent = "Edit";
+    editBtn.className = "icon-btn";
+    editBtn.title = "Edit";
+    editBtn.setAttribute("aria-label", `Edit ${conn.name}`);
+    editBtn.innerHTML = icon("settings");
     editBtn.addEventListener("click", () => openConnectionModal(conn));
     li.appendChild(editBtn);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "icon-btn danger-hover";
+    deleteBtn.title = "Delete";
+    deleteBtn.setAttribute("aria-label", `Delete ${conn.name}`);
+    deleteBtn.innerHTML = icon("trash");
+    deleteBtn.addEventListener("click", () => deleteConnectionById(conn.id));
+    li.appendChild(deleteBtn);
+
     els.manageList.appendChild(li);
   }
   if (state.connections.length === 0) {
     const li = document.createElement("li");
+    li.className = "empty";
     li.textContent = "No connections yet.";
     els.manageList.appendChild(li);
   }
@@ -475,7 +640,7 @@ function downloadTextFile(filename, text) {
   });
 }
 
-// --- Wiring --------------------------------------------------------------
+// --- Wiring ----------------------------------------------------------------
 
 els.connectionSelect.addEventListener("change", async (e) => {
   state.activeId = e.target.value;
@@ -483,7 +648,16 @@ els.connectionSelect.addEventListener("change", async (e) => {
 });
 els.addConnBtn.addEventListener("click", () => openConnectionModal(null));
 els.connCancelBtn.addEventListener("click", () => els.connectionModal.close());
-els.connDeleteBtn.addEventListener("click", deleteActiveFormConnection);
+els.connDeleteBtn.addEventListener("click", async () => {
+  const id = els.connId.value;
+  els.connectionModal.close();
+  if (id) await deleteConnectionById(id);
+});
+els.toggleSecretBtn.addEventListener("click", () => {
+  const show = els.connSecretKey.type === "password";
+  els.connSecretKey.type = show ? "text" : "password";
+  els.toggleSecretBtn.innerHTML = icon(show ? "eyeOff" : "eye");
+});
 els.connectionForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const ok = await saveConnectionFromForm();
@@ -512,7 +686,7 @@ els.importInput.addEventListener("change", async () => {
     renderManageList();
     setStatus(`Imported ${imported.length} connection(s).`);
   } catch (err) {
-    setStatus(err.message, true);
+    setStatus(err.message, { error: true });
   }
   els.importInput.value = "";
 });
@@ -522,9 +696,9 @@ els.loadMoreBtn.addEventListener("click", () => loadMore(false));
 els.newFolderBtn.addEventListener("click", createFolder);
 els.uploadBtn.addEventListener("click", () => els.uploadInput.click());
 els.uploadInput.addEventListener("change", async () => {
-  const file = els.uploadInput.files[0];
+  const files = [...els.uploadInput.files];
   els.uploadInput.value = "";
-  if (file) await uploadFile(file);
+  if (files.length) await uploadFiles(files);
 });
 
 loadConnections();
