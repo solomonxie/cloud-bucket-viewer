@@ -3,15 +3,19 @@
 ## Problem
 
 Browsing S3 today means the AWS console (slow, account-wide login) or a CLI.
-Want a lightweight Chrome side panel: pick a saved connection, browse buckets
-like a file explorer, do basic file ops, without leaving the browser tab.
+Want a lightweight Chrome side panel: pick a saved connection, land straight
+in a bucket like a file explorer, do basic file ops, without leaving the
+browser tab.
 
 ## Goals
 
 - Chrome side panel, always one click away.
-- Multiple named connections (access key + secret key), switchable.
+- Multiple named, bucket-scoped connections (bucket + access key + secret
+  key + starting prefix), switchable. Adding one only strictly requires
+  those four — region is auto-detected from the bucket, name defaults to
+  the bucket name.
 - Keys stored locally only; exportable/importable as JSON.
-- Browse buckets → folders → files (prefix/delimiter navigation).
+- Browse folders → files under that bucket (prefix/delimiter navigation).
 - File ops: download, copy, move, delete. Folder ops: create, recursive delete.
 - Works against AWS S3 and S3-compatible services (R2, MinIO, etc).
 
@@ -55,16 +59,33 @@ document with `host_permissions`, so it calls S3 directly via `fetch`.
 
 ## Data model
 
+A connection is bucket-scoped — one connection browses one bucket (starting
+at an optional prefix), not an AWS account's whole bucket list. Simpler
+mental model, and it's what the four required fields (bucket, access key,
+secret key, prefix) are for.
+
 ```js
 // one entry in chrome.storage.local["connections"]
 {
-  id, name,
-  accessKeyId, secretAccessKey,
-  region,            // default "us-east-1"
+  id,
+  bucket,            // required
+  accessKeyId, secretAccessKey,  // required
+  prefix,            // optional, starting folder, default ""
+  name,              // optional, defaults to bucket at save time
+  region,            // optional, auto-detected from bucket (see below)
   endpoint,          // optional custom host for S3-compatible services
   pathStyle,         // bool, force /bucket/key instead of bucket.host/key
 }
 ```
+
+**Region auto-detection.** Bucket names don't encode a region, but S3's
+legacy global endpoint (`https://{bucket}.s3.amazonaws.com/`) reports the
+real region in an `x-amz-bucket-region` response header even on an
+unauthenticated request — including on the 403 you get without credentials.
+`detectBucketRegion()` uses that instead of asking the user, firing on blur
+of the bucket field and again at save time if still empty. Falls back to
+`us-east-1` if detection fails (e.g. the bucket doesn't exist yet, or a
+custom endpoint is set — region is a manual field there).
 
 ## Custom endpoints & permissions
 
@@ -75,8 +96,9 @@ saved — keeps the install-time permission prompt narrow.
 
 ## Key flows
 
-- **Browse**: connection → `ListBuckets` → bucket → `ListObjectsV2` with
-  `delimiter=/` and growing `prefix`, breadcrumb tracks the prefix stack.
+- **Browse**: pick a connection → straight into its bucket at `prefix` via
+  `ListObjectsV2` with `delimiter=/`; breadcrumb tracks the prefix stack and
+  can always jump back to the connection's starting prefix or the bucket root.
 - **Download**: `GetObject` → blob → `chrome.downloads.download` on an
   object URL.
 - **Copy/Move**: `PUT` with `x-amz-copy-source`; move = copy + `DELETE`.

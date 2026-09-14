@@ -35,12 +35,21 @@ returns the full header set including `Authorization`. Notes:
 
 `new S3Client(connection)` then:
 
-- `listBuckets()` → `GET /` on the account endpoint.
 - `listObjects(bucket, prefix, token)` → one page, `delimiter=/`.
 - `listAllKeys(bucket, prefix)` → async generator, no delimiter, paginates
   via `NextContinuationToken`; used by `deletePrefix()`.
 - `getObjectBlob`, `deleteObject`, `copyObject`, `moveObject` (copy+delete),
   `putObject`, `createFolder` (zero-byte key ending in `/`).
+
+`detectBucketRegion(bucket)` is a standalone export (no credentials needed):
+an unauthenticated `HEAD` to `https://{bucket}.s3.amazonaws.com/` gets a
+`x-amz-bucket-region` response header even on the 403 you get without auth.
+Used by the connection form to fill in region without asking the user.
+
+`request()` turns a non-2xx response into an `Error` using the `<Code>`/
+`<Message>` from S3's XML error body (e.g. `"AccessDenied: ..."`) when
+present, instead of dumping the raw XML — that string is what ends up in the
+status bar / form status via `withStatus()`/`setFormStatus()`.
 
 Virtual-hosted vs. path-style URLs: `usesPathStyle()` is true when
 `connection.pathStyle` is set or a custom `endpoint` is present (custom
@@ -63,9 +72,15 @@ design.md).
 
 Single mutable `state` object (`connections`, `activeId`, `client`, `bucket`,
 `prefix`, `token`), re-rendered imperatively — no framework, no virtual DOM.
-Rows are built with `makeRow()`; navigation always goes through
-`navigateToBuckets/Bucket/Prefix()` so the breadcrumb, toolbar-enabled state,
-and list stay in sync.
+`state.bucket`/`state.prefix` seed from the active connection's `bucket`/
+`prefix` in `onConnectionChanged()`; all further movement goes through
+`navigateToPrefix()` so the breadcrumb and list stay in sync. A connection
+saved before the bucket-scoped model (no `bucket` field) doesn't crash — the
+breadcrumb skips the bucket crumb and the file list shows an "Edit
+connection" prompt instead of trying to list objects.
+
+Rows are built with `makeRow()`; the connection form's Save button runs a
+real validation before persisting anything — see below.
 
 Object keys ending in `/` (S3 "folder marker" objects) are filtered out of
 the file rows — they're represented by the `CommonPrefixes` folder row
@@ -81,6 +96,22 @@ Files get a type-specific icon (`iconForFileName()` in `lib/icons.js`, keyed
 off extension) instead of one generic file glyph. Dropping files onto the
 list uploads them (`dragover`/`drop` on `#fileList`), same code path as the
 Upload button.
+
+## Connection form validation (`saveConnectionFromForm()`)
+
+Save doesn't just persist the form — it proves the connection actually
+works first, with each step reflected in `#connFormStatus` (spinner icon +
+text, via `setFormStatus()`, the same `applyStatus()` helper the main status
+bar uses):
+
+1. Region blank → `detectBucketRegion()` ("Detecting region…").
+2. `new S3Client(conn).listObjects(...)` against the real bucket/prefix
+   ("Checking bucket access…") — this is a throwaway client for the
+   in-progress form values, not `state.client`.
+3. Only on success does it call `upsertConnection()` and close the dialog;
+   on failure the error (see the `<Code>: <Message>` note above) shows in
+   the modal and the dialog stays open so the user can fix it. The Save
+   button is disabled for the duration to prevent double-submits.
 
 ## Adding a new S3 operation
 

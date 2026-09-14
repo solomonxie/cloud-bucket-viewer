@@ -252,6 +252,16 @@ button:focus-visible {
   animation: spin 0.8s linear infinite;
 }
 
+dialog .status {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+}
+
+dialog .status.error {
+  border-color: var(--danger);
+}
+
 /* --- File list -------------------------------------------------------- */
 
 .file-list {
@@ -434,6 +444,25 @@ dialog h2 {
   margin-top: 0 !important;
 }
 
+.advanced {
+  margin: -2px 0 10px;
+}
+
+.advanced summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.advanced summary:hover {
+  color: var(--text);
+}
+
+.advanced .field:last-child {
+  margin-bottom: 0;
+}
+
 .hint {
   font-size: 11px;
   color: var(--text-muted);
@@ -488,6 +517,12 @@ dialog h2 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.manage-list li .name small {
+  display: block;
+  color: var(--text-muted);
+  font-weight: normal;
 }
 
 .manage-list li.active .name {

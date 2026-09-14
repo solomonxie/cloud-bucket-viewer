@@ -37,8 +37,8 @@
         <h2 id="connectionModalTitle">Add connection</h2>
         <input type="hidden" id="connId" />
         <label class="field">
-          <span>Name</span>
-          <input id="connName" required placeholder="e.g. Personal, Work" />
+          <span>Bucket name</span>
+          <input id="connBucket" required autocomplete="off" placeholder="my-bucket" />
         </label>
         <label class="field">
           <span>Access key ID</span>
@@ -52,17 +52,29 @@
           </span>
         </label>
         <label class="field">
-          <span>Region</span>
-          <input id="connRegion" placeholder="us-east-1" />
+          <span>Key prefix <em>(optional, starting folder)</em></span>
+          <input id="connPrefix" placeholder="e.g. logs/2026/" />
         </label>
         <label class="field">
-          <span>Custom endpoint <em>(optional, for S3-compatible services)</em></span>
-          <input id="connEndpoint" placeholder="e.g. abc123.r2.cloudflarestorage.com" />
+          <span>Name <em>(optional, defaults to bucket name)</em></span>
+          <input id="connName" placeholder="e.g. Personal, Work" />
         </label>
-        <label class="field checkbox">
-          <input type="checkbox" id="connPathStyle" /> <span>Use path-style URLs</span>
-        </label>
+        <details class="advanced">
+          <summary>Advanced (region auto-detected)</summary>
+          <label class="field">
+            <span>Region</span>
+            <input id="connRegion" placeholder="auto-detected from bucket" />
+          </label>
+          <label class="field">
+            <span>Custom endpoint <em>(optional, for S3-compatible services)</em></span>
+            <input id="connEndpoint" placeholder="e.g. abc123.r2.cloudflarestorage.com" />
+          </label>
+          <label class="field checkbox">
+            <input type="checkbox" id="connPathStyle" /> <span>Use path-style URLs</span>
+          </label>
+        </details>
         <p class="hint">Keys are stored only in this browser (chrome.storage.local).</p>
+        <div id="connFormStatus" class="status" hidden></div>
         <div class="modal-actions">
           <button type="button" id="connDeleteBtn" class="btn danger" hidden>Delete</button>
           <span class="spacer"></span>
