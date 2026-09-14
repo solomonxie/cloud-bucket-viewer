@@ -7,18 +7,24 @@
   </head>
   <body>
     <header class="topbar">
+      <div class="brand" title="S3 Bucket Viewer">
+        <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+        </svg>
+      </div>
       <select id="connectionSelect" aria-label="Connection"></select>
-      <button id="addConnBtn" title="Add connection">+</button>
-      <button id="manageBtn" title="Manage connections">&#9881;</button>
+      <button id="addConnBtn" class="icon-btn" title="Add connection" aria-label="Add connection"></button>
+      <button id="manageBtn" class="icon-btn" title="Manage connections" aria-label="Manage connections"></button>
     </header>
 
-    <nav id="breadcrumb" class="breadcrumb"></nav>
+    <nav id="breadcrumb" class="breadcrumb" aria-label="Path"></nav>
 
     <div class="toolbar">
-      <button id="refreshBtn" title="Refresh">&#8635;</button>
-      <button id="newFolderBtn" title="New folder" disabled>New folder</button>
-      <button id="uploadBtn" title="Upload file" disabled>Upload</button>
-      <input type="file" id="uploadInput" hidden />
+      <button id="refreshBtn" class="icon-btn" title="Refresh" aria-label="Refresh"></button>
+      <span class="spacer"></span>
+      <button id="newFolderBtn" class="btn" disabled></button>
+      <button id="uploadBtn" class="btn" disabled></button>
+      <input type="file" id="uploadInput" multiple hidden />
     </div>
 
     <div id="status" class="status" hidden></div>
@@ -30,24 +36,38 @@
       <form id="connectionForm" method="dialog">
         <h2 id="connectionModalTitle">Add connection</h2>
         <input type="hidden" id="connId" />
-        <label>Name<input id="connName" required /></label>
-        <label>Access key ID<input id="connAccessKey" required autocomplete="off" /></label>
-        <label>Secret access key
-          <input id="connSecretKey" type="password" required autocomplete="off" />
+        <label class="field">
+          <span>Name</span>
+          <input id="connName" required placeholder="e.g. Personal, Work" />
         </label>
-        <label>Region<input id="connRegion" placeholder="us-east-1" /></label>
-        <label>Custom endpoint (optional, for S3-compatible services)
+        <label class="field">
+          <span>Access key ID</span>
+          <input id="connAccessKey" required autocomplete="off" />
+        </label>
+        <label class="field">
+          <span>Secret access key</span>
+          <span class="input-with-action">
+            <input id="connSecretKey" type="password" required autocomplete="off" />
+            <button type="button" id="toggleSecretBtn" class="icon-btn ghost" title="Show/hide" aria-label="Show or hide secret key"></button>
+          </span>
+        </label>
+        <label class="field">
+          <span>Region</span>
+          <input id="connRegion" placeholder="us-east-1" />
+        </label>
+        <label class="field">
+          <span>Custom endpoint <em>(optional, for S3-compatible services)</em></span>
           <input id="connEndpoint" placeholder="e.g. abc123.r2.cloudflarestorage.com" />
         </label>
-        <label class="checkbox">
-          <input type="checkbox" id="connPathStyle" /> Use path-style URLs
+        <label class="field checkbox">
+          <input type="checkbox" id="connPathStyle" /> <span>Use path-style URLs</span>
         </label>
         <p class="hint">Keys are stored only in this browser (chrome.storage.local).</p>
         <div class="modal-actions">
-          <button type="button" id="connDeleteBtn" class="danger" hidden>Delete</button>
+          <button type="button" id="connDeleteBtn" class="btn danger" hidden>Delete</button>
           <span class="spacer"></span>
-          <button type="button" id="connCancelBtn">Cancel</button>
-          <button type="submit" id="connSaveBtn">Save</button>
+          <button type="button" id="connCancelBtn" class="btn">Cancel</button>
+          <button type="submit" id="connSaveBtn" class="btn primary">Save</button>
         </div>
       </form>
     </dialog>
@@ -56,12 +76,42 @@
       <h2>Manage connections</h2>
       <ul id="manageList" class="manage-list"></ul>
       <div class="modal-actions">
-        <button id="importBtn">Import</button>
-        <button id="exportBtn">Export</button>
+        <button id="importBtn" class="btn">Import</button>
+        <button id="exportBtn" class="btn">Export</button>
         <input type="file" id="importInput" accept="application/json" hidden />
         <span class="spacer"></span>
-        <button id="manageCloseBtn">Close</button>
+        <button id="manageCloseBtn" class="btn primary">Close</button>
       </div>
+    </dialog>
+
+    <dialog id="confirmDialog" class="alert-dialog">
+      <div class="alert-body">
+        <span id="confirmIcon" class="alert-icon"></span>
+        <div>
+          <h2 id="confirmTitle"></h2>
+          <p id="confirmMessage"></p>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button type="button" id="confirmCancelBtn" class="btn">Cancel</button>
+        <button type="button" id="confirmOkBtn" class="btn danger">Confirm</button>
+      </div>
+    </dialog>
+
+    <dialog id="promptDialog" class="alert-dialog">
+      <form id="promptForm" method="dialog">
+        <h2 id="promptTitle"></h2>
+        <label class="field">
+          <span id="promptLabel"></span>
+          <input id="promptInput" required />
+        </label>
+        <div class="modal-actions">
+          <span class="spacer"></span>
+          <button type="button" id="promptCancelBtn" class="btn">Cancel</button>
+          <button type="submit" id="promptOkBtn" class="btn primary">OK</button>
+        </div>
+      </form>
     </dialog>
 
     <script type="module" src="sidepanel.js"></script>

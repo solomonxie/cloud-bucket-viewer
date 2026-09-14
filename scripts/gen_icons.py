@@ -6,7 +6,7 @@ from pathlib import Path
 
 ICON_DIR = Path(__file__).resolve().parent.parent / "extension" / "icons"
 SIZE = 128
-BG = (26, 115, 232)  # brand blue
+BG = (217, 114, 10)  # brand accent (matches sidepanel.css --accent)
 FG = (255, 255, 255)
 
 
