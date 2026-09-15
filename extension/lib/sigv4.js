@@ -115,3 +115,57 @@ export async function signRequest({
 
   return { ...allHeaders, Authorization: authorization };
 }
+
+// Query-string signing (presigned URL): the signature goes in the query
+// string instead of an Authorization header, so the link works when pasted
+// into a browser or shared, and expires after expiresIn seconds.
+export async function presignUrl({
+  method = "GET",
+  url,
+  region,
+  service = "s3",
+  accessKeyId,
+  secretAccessKey,
+  expiresIn = 3600,
+}) {
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.slice(0, 8);
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+
+  const parsed = new URL(url);
+  parsed.searchParams.set("X-Amz-Algorithm", "AWS4-HMAC-SHA256");
+  parsed.searchParams.set("X-Amz-Credential", `${accessKeyId}/${credentialScope}`);
+  parsed.searchParams.set("X-Amz-Date", amzDate);
+  parsed.searchParams.set("X-Amz-Expires", String(expiresIn));
+  parsed.searchParams.set("X-Amz-SignedHeaders", "host");
+
+  const canonicalUri = encodePath(decodeURIComponent(parsed.pathname)) || "/";
+  const canonicalQuery = [...parsed.searchParams.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([k, v]) => `${encodeRFC3986(k)}=${encodeRFC3986(v)}`)
+    .join("&");
+  const canonicalHeaders = `host:${parsed.host}\n`;
+  const signedHeaders = "host";
+
+  const canonicalRequest = [
+    method,
+    canonicalUri,
+    canonicalQuery,
+    canonicalHeaders,
+    signedHeaders,
+    "UNSIGNED-PAYLOAD",
+  ].join("\n");
+
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzDate,
+    credentialScope,
+    await sha256Hex(canonicalRequest),
+  ].join("\n");
+
+  const key = await signingKey(secretAccessKey, dateStamp, region, service);
+  const signature = toHex(await hmac(key, stringToSign));
+  parsed.searchParams.set("X-Amz-Signature", signature);
+  return parsed.toString();
+}
