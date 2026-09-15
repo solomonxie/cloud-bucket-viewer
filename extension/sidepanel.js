@@ -8,6 +8,8 @@ import {
   newConnectionId,
 } from "./lib/store.js";
 import { icon, iconForFileName } from "./lib/icons.js";
+import { previewKind, isTooLargeForTextPreview, mimeForName } from "./lib/preview.js";
+import { renderMarkdown } from "./lib/markdown.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -17,12 +19,26 @@ const els = {
   manageBtn: $("manageBtn"),
   breadcrumb: $("breadcrumb"),
   refreshBtn: $("refreshBtn"),
+  selectModeBtn: $("selectModeBtn"),
+  pasteBtn: $("pasteBtn"),
+  clipboardPill: $("clipboardPill"),
+  clipboardIcon: $("clipboardIcon"),
+  clipboardCount: $("clipboardCount"),
+  clipboardClearBtn: $("clipboardClearBtn"),
+  selectionBar: $("selectionBar"),
+  selectAllCheckbox: $("selectAllCheckbox"),
+  selectionCount: $("selectionCount"),
+  bulkCopyBtn: $("bulkCopyBtn"),
+  bulkMoveBtn: $("bulkMoveBtn"),
+  bulkDeleteBtn: $("bulkDeleteBtn"),
+  exitSelectBtn: $("exitSelectBtn"),
   newFolderBtn: $("newFolderBtn"),
   uploadBtn: $("uploadBtn"),
   uploadInput: $("uploadInput"),
   status: $("status"),
   fileList: $("fileList"),
   loadMoreBtn: $("loadMoreBtn"),
+  listStats: $("listStats"),
   connectionModal: $("connectionModal"),
   connectionForm: $("connectionForm"),
   connectionModalTitle: $("connectionModalTitle"),
@@ -39,6 +55,7 @@ const els = {
   connCancelBtn: $("connCancelBtn"),
   connSaveBtn: $("connSaveBtn"),
   connFormStatus: $("connFormStatus"),
+  connManageAllBtn: $("connManageAllBtn"),
   toggleSecretBtn: $("toggleSecretBtn"),
   manageModal: $("manageModal"),
   manageList: $("manageList"),
@@ -58,6 +75,29 @@ const els = {
   promptLabel: $("promptLabel"),
   promptInput: $("promptInput"),
   promptCancelBtn: $("promptCancelBtn"),
+  shareModal: $("shareModal"),
+  shareModalTitle: $("shareModalTitle"),
+  shareS3Uri: $("shareS3Uri"),
+  copyS3UriBtn: $("copyS3UriBtn"),
+  shareHttpUrl: $("shareHttpUrl"),
+  copyHttpUrlBtn: $("copyHttpUrlBtn"),
+  shareExpiry: $("shareExpiry"),
+  generateSignedBtn: $("generateSignedBtn"),
+  shareSignedUrl: $("shareSignedUrl"),
+  copySignedUrlBtn: $("copySignedUrlBtn"),
+  shareCloseBtn: $("shareCloseBtn"),
+  detailModal: $("detailModal"),
+  detailIcon: $("detailIcon"),
+  detailName: $("detailName"),
+  detailCloseBtn: $("detailCloseBtn"),
+  detailMeta: $("detailMeta"),
+  detailPreview: $("detailPreview"),
+  detailSaveBtn: $("detailSaveBtn"),
+  detailShareBtn: $("detailShareBtn"),
+  detailDownloadBtn: $("detailDownloadBtn"),
+  detailCopyBtn: $("detailCopyBtn"),
+  detailMoveBtn: $("detailMoveBtn"),
+  detailDeleteBtn: $("detailDeleteBtn"),
 };
 
 const state = {
@@ -67,15 +107,44 @@ const state = {
   bucket: null,
   prefix: "",
   token: null,
+  stats: { folders: 0, files: 0, bytes: 0 },
+  listedItems: [], // currently loaded {key, isFolder} rows, for "select all"
+  selectMode: false,
+  selected: new Map(), // key -> {key, isFolder}
+  clipboard: null, // { items: [{key, isFolder}], cut, bucket, connectionId }
 };
 
 // Static icon-only controls: filled in once so sidepanel.html stays markup-only.
 els.addConnBtn.innerHTML = icon("plus");
 els.manageBtn.innerHTML = icon("settings");
 els.refreshBtn.innerHTML = icon("refresh");
+els.pasteBtn.innerHTML = icon("clipboard");
+els.clipboardIcon.innerHTML = icon("clipboard");
+els.clipboardClearBtn.innerHTML = icon("x");
 els.newFolderBtn.innerHTML = `${icon("folderPlus")}<span>New folder</span>`;
 els.uploadBtn.innerHTML = `${icon("upload")}<span>Upload</span>`;
 els.toggleSecretBtn.innerHTML = icon("eye");
+els.copyS3UriBtn.innerHTML = icon("copy");
+els.copyHttpUrlBtn.innerHTML = icon("copy");
+els.copySignedUrlBtn.innerHTML = icon("copy");
+els.detailCloseBtn.innerHTML = icon("x");
+els.detailSaveBtn.innerHTML = icon("save");
+els.detailShareBtn.innerHTML = icon("share");
+els.detailDownloadBtn.innerHTML = icon("download");
+els.detailCopyBtn.innerHTML = icon("copy");
+els.detailMoveBtn.innerHTML = icon("scissors");
+els.detailDeleteBtn.innerHTML = icon("trash");
+els.detailShareBtn.title = els.detailShareBtn.ariaLabel = "Share";
+els.detailDownloadBtn.title = els.detailDownloadBtn.ariaLabel = "Download";
+els.detailCopyBtn.title = els.detailCopyBtn.ariaLabel = "Copy";
+els.detailMoveBtn.title = els.detailMoveBtn.ariaLabel = "Cut";
+els.detailSaveBtn.title = els.detailSaveBtn.ariaLabel = "Save changes";
+els.detailDeleteBtn.title = els.detailDeleteBtn.ariaLabel = "Delete";
+els.selectModeBtn.innerHTML = icon("checkSquare");
+els.bulkCopyBtn.innerHTML = icon("copy");
+els.bulkMoveBtn.innerHTML = icon("move");
+els.bulkDeleteBtn.innerHTML = icon("trash");
+els.exitSelectBtn.innerHTML = icon("x");
 
 function activeConnection() {
   return state.connections.find((c) => c.id === state.activeId) || null;
@@ -228,21 +297,33 @@ function updateToolbar() {
   const inBucket = !!state.bucket;
   els.newFolderBtn.disabled = !inBucket;
   els.uploadBtn.disabled = !inBucket;
+  els.selectModeBtn.disabled = !inBucket;
+  els.manageBtn.disabled = !state.activeId;
+  updateClipboardUI();
 }
 
 // --- Navigation --------------------------------------------------------------
+
+// A connection's own prefix (if any) is a hard boundary: browsing never goes
+// above it, so the root crumb represents that scope, not the whole bucket.
+function rootPrefix() {
+  return activeConnection()?.prefix || "";
+}
 
 function renderBreadcrumb() {
   els.breadcrumb.innerHTML = "";
   const conn = activeConnection();
   const crumbs = [];
   if (conn) {
-    crumbs.push({ label: conn.name, iconName: "home", action: () => navigateToPrefix(conn.prefix || "") });
-    if (conn.bucket) {
-      crumbs.push({ label: conn.bucket, iconName: "bucket", action: () => navigateToPrefix("") });
+    const root = rootPrefix();
+    crumbs.push({ label: conn.name, iconName: "bucket", action: () => navigateToPrefix(root) });
+    // The connection's own prefix is part of the fixed root: show each of its
+    // segments too, but every one of them just returns to that same root.
+    for (const part of root.split("/").filter(Boolean)) {
+      crumbs.push({ label: part, action: () => navigateToPrefix(root) });
     }
-    const parts = state.prefix.split("/").filter(Boolean);
-    let acc = "";
+    const parts = state.prefix.slice(root.length).split("/").filter(Boolean);
+    let acc = root;
     for (const part of parts) {
       acc += part + "/";
       const target = acc;
@@ -266,18 +347,32 @@ function renderBreadcrumb() {
 }
 
 function navigateToPrefix(prefix) {
-  state.prefix = prefix;
+  const root = rootPrefix();
+  state.prefix = prefix.startsWith(root) ? prefix : root;
   state.token = null;
   renderBreadcrumb();
   refresh();
+}
+
+// Prefix one level up from `prefix`, never rising above `root`.
+function parentPrefix(prefix, root) {
+  if (prefix.length <= root.length) return root;
+  const trimmed = prefix.slice(0, -1); // drop trailing slash
+  const idx = trimmed.lastIndexOf("/");
+  const parent = idx >= 0 ? trimmed.slice(0, idx + 1) : "";
+  return parent.length >= root.length ? parent : root;
 }
 
 // --- Listing -----------------------------------------------------------------
 
 async function refresh() {
   state.token = null;
+  state.listedItems = [];
+  state.selected.clear();
+  updateSelectionBar();
   els.fileList.innerHTML = "";
   els.loadMoreBtn.hidden = true;
+  els.listStats.hidden = true;
   if (!state.client) {
     renderEmptyState("home", "Add a connection to get started", "Click + next to the connection dropdown.");
     return;
@@ -304,37 +399,220 @@ async function loadMore(reset = false) {
     renderObjectRows(data, reset);
     state.token = data.isTruncated ? data.nextToken : null;
     els.loadMoreBtn.hidden = !state.token;
+    renderStats();
   } catch {
     // withStatus already surfaced the error
   }
 }
 
-function renderEmptyState(iconName, primary, secondary, action) {
-  els.fileList.innerHTML = `
-    <div class="empty-state">
-      ${icon(iconName)}
-      <div class="primary">${escapeHtml(primary)}</div>
-      <div>${escapeHtml(secondary)}</div>
-    </div>`;
+function emptyStateNode(iconName, primary, secondary, action) {
+  const div = document.createElement("div");
+  div.className = "empty-state";
+  div.innerHTML = `${icon(iconName)}<div class="primary">${escapeHtml(primary)}</div><div>${escapeHtml(secondary)}</div>`;
   if (action) {
     const btn = document.createElement("button");
     btn.className = "btn primary";
     btn.textContent = action.label;
     btn.addEventListener("click", action.onClick);
-    els.fileList.querySelector(".empty-state").appendChild(btn);
+    div.appendChild(btn);
+  }
+  return div;
+}
+
+function renderEmptyState(iconName, primary, secondary, action) {
+  els.fileList.innerHTML = "";
+  els.fileList.appendChild(emptyStateNode(iconName, primary, secondary, action));
+}
+
+// Lets the user step back out of the current folder without relying on the
+// breadcrumb; never rises above the connection's own prefix boundary.
+function appendParentRow() {
+  const root = rootPrefix();
+  if (state.prefix.length <= root.length) return;
+  els.fileList.appendChild(
+    makeRow({
+      badgeIcon: "cornerUpLeft",
+      badgeClass: "folder",
+      name: "..",
+      onOpen: () => navigateToPrefix(parentPrefix(state.prefix, root)),
+    })
+  );
+}
+
+function renderStats() {
+  const { folders, files, bytes } = state.stats;
+  if (folders + files === 0) {
+    els.listStats.hidden = true;
+    return;
+  }
+  const parts = [
+    `${folders} folder${folders === 1 ? "" : "s"}`,
+    `${files} file${files === 1 ? "" : "s"}`,
+  ];
+  if (bytes) parts.push(formatSize(bytes));
+  if (state.token) parts.push("more not loaded");
+  els.listStats.hidden = false;
+  els.listStats.textContent = parts.join(" · ");
+}
+
+// --- Multi-select & bulk actions ---------------------------------------------
+
+function setSelectMode(on) {
+  state.selectMode = on;
+  state.selected.clear();
+  els.selectModeBtn.classList.toggle("active", on);
+  els.selectionBar.hidden = !on;
+  updateSelectionBar();
+  refresh();
+}
+
+function toggleSelected(item, checked) {
+  if (checked) state.selected.set(item.key, item);
+  else state.selected.delete(item.key);
+  updateSelectionBar();
+}
+
+function updateSelectionBar() {
+  const n = state.selected.size;
+  els.selectionCount.textContent = `${n} selected`;
+  els.selectAllCheckbox.checked = n > 0 && n === state.listedItems.length;
+  els.selectAllCheckbox.indeterminate = n > 0 && n < state.listedItems.length;
+  els.bulkCopyBtn.disabled = n === 0;
+  els.bulkMoveBtn.disabled = n === 0;
+  els.bulkDeleteBtn.disabled = n === 0;
+}
+
+function syncRowCheckboxes() {
+  els.fileList.querySelectorAll(".row-check").forEach((cb) => {
+    const checked = state.selected.has(cb.dataset.key);
+    cb.checked = checked;
+    cb.closest(".row").classList.toggle("selected", checked);
+  });
+}
+
+// --- Clipboard (copy/cut/paste) -----------------------------------------
+
+function setClipboard(items, cut) {
+  if (!items.length) return;
+  state.clipboard = { items, cut, bucket: state.bucket, connectionId: state.activeId };
+  updateClipboardUI();
+  setStatus(
+    `${items.length} item${items.length === 1 ? "" : "s"} ${cut ? "cut" : "copied"} — open a folder and click Paste.`
+  );
+}
+
+function clearClipboard() {
+  state.clipboard = null;
+  updateClipboardUI();
+}
+
+function updateClipboardUI() {
+  const cb = state.clipboard;
+  els.clipboardPill.hidden = !cb;
+  if (cb) {
+    els.clipboardCount.textContent = `${cb.items.length} item${cb.items.length === 1 ? "" : "s"} ${cb.cut ? "cut" : "copied"}`;
+  }
+  const mismatched = cb && cb.connectionId !== state.activeId;
+  els.pasteBtn.disabled = !cb || mismatched || !state.bucket;
+  els.pasteBtn.title = mismatched ? "Clipboard has items from a different connection" : "Paste";
+}
+
+async function pasteClipboard() {
+  const cb = state.clipboard;
+  if (!cb || els.pasteBtn.disabled) return;
+  let pasted = 0;
+  let skipped = 0;
+  try {
+    setStatus(`Pasting ${cb.items.length} item(s)…`, { loading: true });
+    for (const item of cb.items) {
+      const base = item.key.replace(/\/$/, "").split("/").pop();
+      const destKey = state.prefix + base + (item.isFolder ? "/" : "");
+      // Refuse a no-op paste (same spot) or nesting a folder inside itself.
+      if (destKey === item.key || (item.isFolder && state.prefix.startsWith(item.key))) {
+        skipped += 1;
+        continue;
+      }
+      if (item.isFolder) {
+        await state.client.copyPrefix(state.bucket, destKey, cb.bucket, item.key);
+        if (cb.cut) await state.client.deletePrefix(cb.bucket, item.key);
+      } else {
+        await state.client.copyObject(state.bucket, destKey, cb.bucket, item.key);
+        if (cb.cut) await state.client.deleteObject(cb.bucket, item.key);
+      }
+      pasted += 1;
+    }
+    setStatus(skipped ? `Pasted ${pasted}, skipped ${skipped} (already here).` : `Pasted ${pasted} item(s).`);
+    if (cb.cut && pasted > 0) clearClipboard(); // cut items move once; copy stays for repeat pastes
+    await refresh();
+  } catch (err) {
+    console.error(err);
+    setStatus(err.message || String(err), { error: true });
   }
 }
 
-function makeRow({ badgeIcon, badgeClass, name, meta, onOpen, actions }) {
+async function bulkDelete() {
+  const items = [...state.selected.values()];
+  if (!items.length) return;
+  const ok = await confirmDialog({
+    title: `Delete ${items.length} item${items.length === 1 ? "" : "s"}?`,
+    message: "Folders are deleted recursively. This can't be undone.",
+  });
+  if (!ok) return;
+  try {
+    setStatus(`Deleting ${items.length} item(s)…`, { loading: true });
+    for (const item of items) {
+      if (item.isFolder) await state.client.deletePrefix(state.bucket, item.key);
+      else await state.client.deleteObject(state.bucket, item.key);
+    }
+    setStatus("");
+    setSelectMode(false);
+  } catch (err) {
+    console.error(err);
+    setStatus(err.message || String(err), { error: true });
+  }
+}
+
+
+function makeRow({ badgeIcon, badgeClass, name, meta, onOpen, actions, itemKey, isFolder, checked }) {
   const row = document.createElement("div");
   row.className = "row";
+  const selectable = state.selectMode && itemKey;
+
+  if (selectable) {
+    row.classList.add("selectable");
+    row.classList.toggle("selected", !!checked);
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "row-check";
+    cb.checked = !!checked;
+    cb.dataset.key = itemKey;
+    cb.setAttribute("aria-label", `Select ${name}`);
+    cb.addEventListener("click", (e) => e.stopPropagation());
+    cb.addEventListener("change", () => {
+      row.classList.toggle("selected", cb.checked);
+      toggleSelected({ key: itemKey, isFolder }, cb.checked);
+    });
+    row.appendChild(cb);
+  }
 
   const badge = document.createElement("span");
   badge.className = badgeClass ? `badge ${badgeClass}` : "badge";
   badge.innerHTML = icon(badgeIcon);
   row.appendChild(badge);
 
-  if (onOpen) {
+  if (selectable) {
+    const nameEl = document.createElement("span");
+    nameEl.className = "name";
+    nameEl.textContent = name;
+    nameEl.title = name;
+    row.appendChild(nameEl);
+    row.addEventListener("click", (e) => {
+      if (e.target.closest("input")) return;
+      const cb = row.querySelector(".row-check");
+      cb.checked = !cb.checked;
+      cb.dispatchEvent(new Event("change"));
+    });
+  } else if (onOpen) {
     const btn = document.createElement("button");
     btn.className = "name-btn";
     btn.textContent = name;
@@ -371,18 +649,31 @@ function makeRow({ badgeIcon, badgeClass, name, meta, onOpen, actions }) {
 }
 
 function renderObjectRows(data, reset) {
-  if (reset) els.fileList.innerHTML = "";
+  if (reset) {
+    els.fileList.innerHTML = "";
+    state.stats = { folders: 0, files: 0, bytes: 0 };
+    appendParentRow();
+  }
+  state.stats.folders += data.prefixes.length;
   for (const prefix of data.prefixes) {
     const name = prefix.slice(state.prefix.length).replace(/\/$/, "");
+    state.listedItems.push({ key: prefix, isFolder: true });
     els.fileList.appendChild(
       makeRow({
         badgeIcon: "folder",
         badgeClass: "folder",
         name,
+        itemKey: prefix,
+        isFolder: true,
+        checked: state.selected.has(prefix),
         onOpen: () => navigateToPrefix(prefix),
-        actions: [
-          { iconName: "trash", title: "Delete folder", danger: true, onClick: () => deleteFolder(prefix) },
-        ],
+        actions: state.selectMode
+          ? []
+          : [
+              { iconName: "copy", title: "Copy", onClick: () => setClipboard([{ key: prefix, isFolder: true }], false) },
+              { iconName: "scissors", title: "Cut", onClick: () => setClipboard([{ key: prefix, isFolder: true }], true) },
+              { iconName: "trash", title: "Delete folder", danger: true, onClick: () => deleteFolder(prefix) },
+            ],
       })
     );
   }
@@ -390,22 +681,31 @@ function renderObjectRows(data, reset) {
     if (obj.key.endsWith("/")) continue; // folder-marker object, already shown as a folder
     const name = obj.key.slice(state.prefix.length);
     if (!name) continue;
+    state.stats.files += 1;
+    state.stats.bytes += obj.size || 0;
+    state.listedItems.push({ key: obj.key, isFolder: false });
     els.fileList.appendChild(
       makeRow({
         badgeIcon: iconForFileName(name),
         name,
         meta: `${formatSize(obj.size)} · ${formatDate(obj.lastModified)}`,
-        actions: [
-          { iconName: "download", title: "Download", onClick: () => downloadObject(obj.key, name) },
-          { iconName: "copy", title: "Copy to…", onClick: () => copyObject(obj.key) },
-          { iconName: "move", title: "Move to…", onClick: () => moveObject(obj.key) },
-          { iconName: "trash", title: "Delete", danger: true, onClick: () => deleteObject(obj.key) },
-        ],
+        itemKey: obj.key,
+        isFolder: false,
+        checked: state.selected.has(obj.key),
+        onOpen: () => openObjectDetail(obj, name),
+        actions: state.selectMode
+          ? []
+          : [
+              { iconName: "copy", title: "Copy", onClick: () => setClipboard([{ key: obj.key, isFolder: false }], false) },
+              { iconName: "scissors", title: "Cut", onClick: () => setClipboard([{ key: obj.key, isFolder: false }], true) },
+            ],
       })
     );
   }
-  if (data.prefixes.length === 0 && data.objects.length === 0) {
-    renderEmptyState("inbox", "This folder is empty", "Upload a file or drop one here.");
+  if (reset && data.prefixes.length === 0 && data.objects.length === 0) {
+    els.fileList.appendChild(
+      emptyStateNode("inbox", "This folder is empty", "Upload a file or drop one here.")
+    );
   }
 }
 
@@ -420,36 +720,6 @@ async function downloadObject(key, name) {
     const url = URL.createObjectURL(blob);
     await chrome.downloads.download({ url, filename: name });
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  } catch {
-    // withStatus already surfaced the error
-  }
-}
-
-async function copyObject(key) {
-  const dest = await promptDialog({
-    title: "Copy to…",
-    label: "Destination key (full path within this bucket)",
-    value: key,
-  });
-  if (!dest || dest === key) return;
-  try {
-    await withStatus(state.client.copyObject(state.bucket, dest, state.bucket, key), "Copying…");
-    await refresh();
-  } catch {
-    // withStatus already surfaced the error
-  }
-}
-
-async function moveObject(key) {
-  const dest = await promptDialog({
-    title: "Move to…",
-    label: "Destination key (full path within this bucket)",
-    value: key,
-  });
-  if (!dest || dest === key) return;
-  try {
-    await withStatus(state.client.moveObject(state.bucket, dest, state.bucket, key), "Moving…");
-    await refresh();
   } catch {
     // withStatus already surfaced the error
   }
@@ -481,6 +751,218 @@ async function deleteFolder(prefix) {
   } catch {
     // withStatus already surfaced the error
   }
+}
+
+// --- Object detail & sharing -------------------------------------------------
+
+async function copyToClipboard(text) {
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus("Copied to clipboard.");
+  } catch {
+    setStatus("Couldn't copy to clipboard.", { error: true });
+  }
+}
+
+// --- Object preview & inline text/markdown editing --------------------------
+
+let editorState = null; // { key, mimeType, original, el } while a text/markdown file is open
+
+function isEditorDirty() {
+  return !!editorState && editorState.el.value !== editorState.original;
+}
+
+function markEditorDirty() {
+  const dirty = isEditorDirty();
+  els.detailSaveBtn.disabled = !dirty;
+  els.detailSaveBtn.classList.toggle("dirty", dirty);
+}
+
+async function saveEditor() {
+  if (!editorState) return;
+  const text = editorState.el.value;
+  try {
+    await withStatus(
+      state.client.putObject(state.bucket, editorState.key, new Blob([text]), editorState.mimeType),
+      "Saving…"
+    );
+    editorState.original = text;
+    markEditorDirty();
+  } catch {
+    // withStatus already surfaced the error
+  }
+}
+
+async function renderDetailPreview(obj, name) {
+  els.detailPreview.innerHTML = "";
+  els.detailSaveBtn.hidden = true;
+  els.detailSaveBtn.disabled = true;
+  els.detailSaveBtn.classList.remove("dirty");
+  editorState = null;
+
+  const kind = previewKind(name);
+  if (!kind) return;
+
+  if (kind === "image" || kind === "video" || kind === "audio" || kind === "pdf") {
+    let url;
+    try {
+      // A presigned URL lets the browser fetch it directly — native Range
+      // requests for video/audio scrubbing, no need to buffer the file in JS.
+      url = await state.client.presignedUrl(state.bucket, obj.key, 3600);
+    } catch (err) {
+      console.error(err);
+      return;
+    }
+    if (kind === "image") {
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = name;
+      els.detailPreview.appendChild(img);
+    } else if (kind === "video") {
+      const video = document.createElement("video");
+      video.src = url;
+      video.controls = true;
+      els.detailPreview.appendChild(video);
+    } else if (kind === "audio") {
+      const audio = document.createElement("audio");
+      audio.src = url;
+      audio.controls = true;
+      els.detailPreview.appendChild(audio);
+    } else {
+      const iframe = document.createElement("iframe");
+      iframe.className = "pdf-frame";
+      iframe.src = url;
+      els.detailPreview.appendChild(iframe);
+      const fallback = document.createElement("div");
+      fallback.className = "preview-fallback";
+      fallback.innerHTML = `Not rendering? <a href="${url}" target="_blank" rel="noopener">Open in a new tab</a>.`;
+      els.detailPreview.appendChild(fallback);
+    }
+    return;
+  }
+
+  // text / markdown: fetch the object and show it as an editable source,
+  // with a rendered-preview toggle for markdown.
+  if (isTooLargeForTextPreview(obj.size)) {
+    const note = document.createElement("div");
+    note.className = "preview-fallback";
+    note.textContent = `File is ${formatSize(obj.size)} — too large to preview/edit here. Use Download instead.`;
+    els.detailPreview.appendChild(note);
+    return;
+  }
+
+  let text;
+  try {
+    const blob = await withStatus(state.client.getObjectBlob(state.bucket, obj.key), "Loading preview…");
+    text = await blob.text();
+  } catch {
+    return; // withStatus already surfaced the error
+  }
+
+  const editor = document.createElement("textarea");
+  editor.className = "detail-editor";
+  editor.value = text;
+  editor.spellcheck = false;
+  editor.addEventListener("input", markEditorDirty);
+
+  editorState = { key: obj.key, mimeType: mimeForName(name), original: text, el: editor };
+  els.detailSaveBtn.hidden = false;
+
+  if (kind === "markdown") {
+    const toolbar = document.createElement("div");
+    toolbar.className = "preview-toolbar";
+    const previewBtn = document.createElement("button");
+    previewBtn.type = "button";
+    previewBtn.className = "btn";
+    previewBtn.textContent = "Preview";
+    const sourceBtn = document.createElement("button");
+    sourceBtn.type = "button";
+    sourceBtn.className = "btn";
+    sourceBtn.textContent = "Source";
+    const rendered = document.createElement("div");
+    rendered.className = "markdown-preview";
+
+    const showPreview = () => {
+      rendered.innerHTML = renderMarkdown(editor.value);
+      rendered.hidden = false;
+      editor.hidden = true;
+      previewBtn.classList.add("active");
+      sourceBtn.classList.remove("active");
+    };
+    const showSource = () => {
+      rendered.hidden = true;
+      editor.hidden = false;
+      sourceBtn.classList.add("active");
+      previewBtn.classList.remove("active");
+    };
+    previewBtn.addEventListener("click", showPreview);
+    sourceBtn.addEventListener("click", showSource);
+    toolbar.append(previewBtn, sourceBtn);
+    els.detailPreview.append(toolbar, rendered, editor);
+    showPreview();
+  } else {
+    els.detailPreview.appendChild(editor);
+  }
+}
+
+async function closeDetailModal() {
+  if (isEditorDirty()) {
+    const ok = await confirmDialog({
+      title: "Discard changes?",
+      message: "Your edits haven't been saved.",
+      confirmLabel: "Discard",
+    });
+    if (!ok) return;
+  }
+  els.detailModal.close();
+}
+
+function openShareMenu(key, name) {
+  els.shareModalTitle.textContent = `Share "${name}"`;
+  els.shareModal.dataset.key = key;
+  els.shareS3Uri.value = state.client.s3Uri(state.bucket, key);
+  els.shareHttpUrl.value = state.client.unsignedUrl(state.bucket, key);
+  els.shareSignedUrl.value = "";
+  els.shareModal.showModal();
+}
+
+function openObjectDetail(obj, name) {
+  els.detailIcon.innerHTML = icon(iconForFileName(name));
+  els.detailName.textContent = name;
+  els.detailMeta.innerHTML = "";
+  const rows = [
+    ["Key", obj.key],
+    ["Size", formatSize(obj.size)],
+    ["Last modified", formatDate(obj.lastModified) || obj.lastModified || "—"],
+  ];
+  if (obj.storageClass) rows.push(["Storage class", obj.storageClass]);
+  for (const [label, value] of rows) {
+    const dt = document.createElement("dt");
+    dt.textContent = label;
+    const dd = document.createElement("dd");
+    dd.textContent = value;
+    els.detailMeta.append(dt, dd);
+  }
+  els.detailShareBtn.onclick = () => openShareMenu(obj.key, name);
+  els.detailDownloadBtn.onclick = () => {
+    els.detailModal.close();
+    downloadObject(obj.key, name);
+  };
+  els.detailCopyBtn.onclick = () => {
+    els.detailModal.close();
+    setClipboard([{ key: obj.key, isFolder: false }], false);
+  };
+  els.detailMoveBtn.onclick = () => {
+    els.detailModal.close();
+    setClipboard([{ key: obj.key, isFolder: false }], true);
+  };
+  els.detailDeleteBtn.onclick = () => {
+    els.detailModal.close();
+    deleteObject(obj.key);
+  };
+  els.detailModal.showModal();
+  renderDetailPreview(obj, name);
 }
 
 async function createFolder() {
@@ -556,6 +1038,14 @@ els.connBucket.addEventListener("blur", async () => {
   els.connRegion.placeholder = "auto-detected from bucket";
 });
 
+// A trailing slash keeps the prefix a clean folder boundary — required now
+// that it doubles as the hard root of browsing (see rootPrefix()).
+function normalizePrefix(p) {
+  p = p.replace(/^\/+/, "");
+  if (p && !p.endsWith("/")) p += "/";
+  return p;
+}
+
 async function saveConnectionFromForm() {
   const endpoint = els.connEndpoint.value.trim();
   if (endpoint) {
@@ -574,7 +1064,7 @@ async function saveConnectionFromForm() {
     name: els.connName.value.trim() || bucket,
     accessKeyId: els.connAccessKey.value.trim(),
     secretAccessKey: els.connSecretKey.value.trim(),
-    prefix: els.connPrefix.value.trim().replace(/^\/+/, ""),
+    prefix: normalizePrefix(els.connPrefix.value.trim()),
     endpoint,
     pathStyle: els.connPathStyle.checked,
   };
@@ -633,12 +1123,13 @@ function renderManageList() {
     badge.innerHTML = icon("bucket");
     li.appendChild(badge);
 
+    const label = conn.name || conn.bucket || "(unnamed connection)";
     const name = document.createElement("span");
     name.className = "name";
     name.innerHTML =
-      conn.name === conn.bucket
-        ? escapeHtml(conn.name)
-        : `${escapeHtml(conn.name)}<small>${escapeHtml(conn.bucket)}</small>`;
+      !conn.bucket || label === conn.bucket
+        ? escapeHtml(label)
+        : `${escapeHtml(label)}<small>${escapeHtml(conn.bucket)}</small>`;
     li.appendChild(name);
 
     const editBtn = document.createElement("button");
@@ -698,11 +1189,13 @@ els.connectionForm.addEventListener("submit", async (e) => {
   const ok = await saveConnectionFromForm();
   if (ok) els.connectionModal.close();
 });
-
-els.manageBtn.addEventListener("click", () => {
+els.connManageAllBtn.addEventListener("click", () => {
+  els.connectionModal.close();
   renderManageList();
   els.manageModal.showModal();
 });
+
+els.manageBtn.addEventListener("click", () => openConnectionModal(activeConnection()));
 els.manageCloseBtn.addEventListener("click", () => els.manageModal.close());
 els.exportBtn.addEventListener("click", () => {
   downloadTextFile("s3-viewer-connections.json", exportConnections(state.connections));
@@ -729,11 +1222,78 @@ els.importInput.addEventListener("change", async () => {
 els.refreshBtn.addEventListener("click", refresh);
 els.loadMoreBtn.addEventListener("click", () => loadMore(false));
 els.newFolderBtn.addEventListener("click", createFolder);
+
+els.selectModeBtn.addEventListener("click", () => setSelectMode(!state.selectMode));
+els.exitSelectBtn.addEventListener("click", () => setSelectMode(false));
+els.selectAllCheckbox.addEventListener("change", () => {
+  state.selected = els.selectAllCheckbox.checked
+    ? new Map(state.listedItems.map((i) => [i.key, i]))
+    : new Map();
+  updateSelectionBar();
+  syncRowCheckboxes();
+});
+els.bulkDeleteBtn.addEventListener("click", bulkDelete);
+els.bulkCopyBtn.addEventListener("click", () => {
+  setClipboard([...state.selected.values()], false);
+  setSelectMode(false);
+});
+els.bulkMoveBtn.addEventListener("click", () => {
+  setClipboard([...state.selected.values()], true);
+  setSelectMode(false);
+});
+els.pasteBtn.addEventListener("click", pasteClipboard);
+els.clipboardClearBtn.addEventListener("click", () => {
+  clearClipboard();
+  setStatus("");
+});
 els.uploadBtn.addEventListener("click", () => els.uploadInput.click());
 els.uploadInput.addEventListener("change", async () => {
   const files = [...els.uploadInput.files];
   els.uploadInput.value = "";
   if (files.length) await uploadFiles(files);
 });
+
+els.copyS3UriBtn.addEventListener("click", () => copyToClipboard(els.shareS3Uri.value));
+els.copyHttpUrlBtn.addEventListener("click", () => copyToClipboard(els.shareHttpUrl.value));
+els.copySignedUrlBtn.addEventListener("click", () => copyToClipboard(els.shareSignedUrl.value));
+els.generateSignedBtn.addEventListener("click", async () => {
+  const key = els.shareModal.dataset.key;
+  const expiresIn = Number(els.shareExpiry.value);
+  try {
+    els.shareSignedUrl.value = await withStatus(
+      state.client.presignedUrl(state.bucket, key, expiresIn),
+      "Signing…"
+    );
+    await copyToClipboard(els.shareSignedUrl.value);
+  } catch {
+    // withStatus already surfaced the error
+  }
+});
+els.shareCloseBtn.addEventListener("click", () => els.shareModal.close());
+
+els.detailSaveBtn.addEventListener("click", saveEditor);
+els.detailCloseBtn.addEventListener("click", closeDetailModal);
+// Escape triggers the dialog's native "cancel" first — gate it the same way
+// as the close button so unsaved edits aren't lost silently.
+els.detailModal.addEventListener("cancel", (e) => {
+  if (isEditorDirty()) {
+    e.preventDefault();
+    closeDetailModal();
+  }
+});
+
+// A click on the backdrop lands on the <dialog> itself (outside its content
+// box), so treat that as "close" too — a bigger, more forgiving target than
+// the close button alone.
+function closeOnBackdropClick(dialog, onRequestClose = () => dialog.close()) {
+  dialog.addEventListener("click", (e) => {
+    if (e.target !== dialog) return;
+    const r = dialog.getBoundingClientRect();
+    const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    if (!inside) onRequestClose();
+  });
+}
+closeOnBackdropClick(els.detailModal, closeDetailModal);
+closeOnBackdropClick(els.shareModal);
 
 loadConnections();

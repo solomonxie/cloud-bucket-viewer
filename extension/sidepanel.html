@@ -14,23 +14,44 @@
       </div>
       <select id="connectionSelect" aria-label="Connection"></select>
       <button id="addConnBtn" class="icon-btn" title="Add connection" aria-label="Add connection"></button>
-      <button id="manageBtn" class="icon-btn" title="Manage connections" aria-label="Manage connections"></button>
+      <button id="manageBtn" class="icon-btn" title="Edit connection" aria-label="Edit connection"></button>
     </header>
-
-    <nav id="breadcrumb" class="breadcrumb" aria-label="Path"></nav>
 
     <div class="toolbar">
       <button id="refreshBtn" class="icon-btn" title="Refresh" aria-label="Refresh"></button>
+      <button id="selectModeBtn" class="icon-btn" title="Select multiple" aria-label="Select multiple" disabled></button>
+      <button id="pasteBtn" class="icon-btn" title="Paste" aria-label="Paste" disabled></button>
       <span class="spacer"></span>
       <button id="newFolderBtn" class="btn" disabled></button>
       <button id="uploadBtn" class="btn" disabled></button>
       <input type="file" id="uploadInput" multiple hidden />
     </div>
 
+    <nav id="breadcrumb" class="breadcrumb" aria-label="Path"></nav>
+
+    <div id="clipboardPill" class="clipboard-pill" hidden>
+      <span id="clipboardIcon"></span>
+      <span id="clipboardCount" class="count"></span>
+      <button type="button" id="clipboardClearBtn" class="icon-btn ghost" title="Clear clipboard" aria-label="Clear clipboard"></button>
+    </div>
+
+    <div id="selectionBar" class="selection-bar" hidden>
+      <label class="field checkbox select-all">
+        <input type="checkbox" id="selectAllCheckbox" />
+        <span id="selectionCount">0 selected</span>
+      </label>
+      <span class="spacer"></span>
+      <button id="bulkCopyBtn" class="icon-btn" title="Copy selected to…" aria-label="Copy selected to…"></button>
+      <button id="bulkMoveBtn" class="icon-btn" title="Move selected to…" aria-label="Move selected to…"></button>
+      <button id="bulkDeleteBtn" class="icon-btn danger-hover" title="Delete selected" aria-label="Delete selected"></button>
+      <button id="exitSelectBtn" class="icon-btn" title="Cancel selection" aria-label="Cancel selection"></button>
+    </div>
+
     <div id="status" class="status" hidden></div>
 
     <main id="fileList" class="file-list"></main>
-    <button id="loadMoreBtn" class="load-more" hidden>Load more</button>
+    <button id="loadMoreBtn" class="load-more" hidden>Load more…</button>
+    <div id="listStats" class="list-stats" hidden></div>
 
     <dialog id="connectionModal">
       <form id="connectionForm" method="dialog">
@@ -74,6 +95,7 @@
           </label>
         </details>
         <p class="hint">Keys are stored only in this browser (chrome.storage.local).</p>
+        <button type="button" id="connManageAllBtn" class="link-btn">Manage all connections…</button>
         <div id="connFormStatus" class="status" hidden></div>
         <div class="modal-actions">
           <button type="button" id="connDeleteBtn" class="btn danger" hidden>Delete</button>
@@ -124,6 +146,65 @@
           <button type="submit" id="promptOkBtn" class="btn primary">OK</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog id="shareModal" class="alert-dialog share-dialog">
+      <h2 id="shareModalTitle">Share</h2>
+      <div class="share-row">
+        <span>s3:// URI</span>
+        <div class="share-value">
+          <input id="shareS3Uri" readonly />
+          <button type="button" id="copyS3UriBtn" class="icon-btn" title="Copy" aria-label="Copy s3:// URI"></button>
+        </div>
+      </div>
+      <div class="share-row">
+        <span>HTTP link <em>(unsigned — only works if the object/bucket is public)</em></span>
+        <div class="share-value">
+          <input id="shareHttpUrl" readonly />
+          <button type="button" id="copyHttpUrlBtn" class="icon-btn" title="Copy" aria-label="Copy HTTP link"></button>
+        </div>
+      </div>
+      <div class="share-row">
+        <span>Signed link <em>(works on private objects, expires)</em></span>
+        <div class="share-value">
+          <select id="shareExpiry">
+            <option value="900">Expires in 15 minutes</option>
+            <option value="3600" selected>Expires in 1 hour</option>
+            <option value="21600">Expires in 6 hours</option>
+            <option value="86400">Expires in 1 day</option>
+            <option value="604800">Expires in 7 days</option>
+          </select>
+          <button type="button" id="generateSignedBtn" class="btn">Generate</button>
+        </div>
+        <div class="share-value">
+          <input id="shareSignedUrl" readonly placeholder="Click Generate…" />
+          <button type="button" id="copySignedUrlBtn" class="icon-btn" title="Copy" aria-label="Copy signed link"></button>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button type="button" id="shareCloseBtn" class="btn primary">Close</button>
+      </div>
+    </dialog>
+
+    <dialog id="detailModal" class="sheet-dialog">
+      <div class="sheet-header">
+        <span id="detailIcon" class="badge"></span>
+        <h2 id="detailName"></h2>
+        <button type="button" id="detailCloseBtn" class="icon-btn" title="Close" aria-label="Close"></button>
+      </div>
+      <div class="sheet-body">
+        <div id="detailPreview" class="detail-preview"></div>
+        <dl id="detailMeta" class="detail-meta"></dl>
+      </div>
+      <div class="modal-actions sheet-actions">
+        <button type="button" id="detailSaveBtn" class="icon-btn" hidden></button>
+        <button type="button" id="detailShareBtn" class="icon-btn"></button>
+        <button type="button" id="detailDownloadBtn" class="icon-btn"></button>
+        <button type="button" id="detailCopyBtn" class="icon-btn"></button>
+        <button type="button" id="detailMoveBtn" class="icon-btn"></button>
+        <button type="button" id="detailDeleteBtn" class="icon-btn danger-hover"></button>
+      </div>
     </dialog>
 
     <script type="module" src="sidepanel.js"></script>
