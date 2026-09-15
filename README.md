@@ -55,6 +55,9 @@ make clean  # remove dist/
 No dependencies to install — everything runs on the system's `node`,
 `python3` and `zip`.
 
+`docs/store/` — Chrome Web Store listing assets: screenshots (1280x800)
+and small promo tile (440x280).
+
 ## Security note
 
 Access keys and secret keys are stored in plaintext in
