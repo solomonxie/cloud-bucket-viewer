@@ -5,28 +5,59 @@ import zlib
 from pathlib import Path
 
 ICON_DIR = Path(__file__).resolve().parent.parent / "extension" / "icons"
-SIZE = 128
 BG = (217, 114, 10)  # brand accent (matches sidepanel.css --accent)
 FG = (255, 255, 255)
 
+# Shape is defined on a fixed 16x16 unit grid, independent of pixel size.
+CLOUD_CIRCLES = [(6.7, 4.0, 2.0), (9.0, 3.2, 2.3), (11.1, 4.1, 1.7)]
+CLOUD_BASE = (4.6, 4.0, 12.4, 5.3)  # x0, y0, x1, y1
+BUCKET_TOP, BUCKET_BOTTOM = 6.8, 13.6
+BUCKET_TOP_L, BUCKET_TOP_R = 4.0, 12.0
+BUCKET_BOTTOM_L, BUCKET_BOTTOM_R = 5.3, 10.7
+BUCKET_RIM_GAP = (7.3, 7.9)
 
-def bucket_pixels(size):
-    """Flat-color square with a simple white bucket glyph."""
-    pixels = [[BG for _ in range(size)] for _ in range(size)]
-    m = size / 16
-    top, bottom = int(3 * m), int(13 * m)
-    left_top, right_top = int(4 * m), int(12 * m)
-    left_bottom, right_bottom = int(5 * m), int(11 * m)
-    band = int(6.5 * m)
-    for y in range(top, bottom):
-        t = (y - top) / (bottom - top)
-        left = round(left_top + (left_bottom - left_top) * t)
-        right = round(right_top + (right_bottom - right_top) * t)
-        for x in range(left, right):
-            on_edge = x in (left, right - 1) or y == top or y == bottom - 1
-            on_band = abs(y - band) <= max(1, int(m * 0.4))
-            if on_edge or on_band:
-                pixels[y][x] = FG
+
+def in_cloud(u, v):
+    if any((u - cx) ** 2 + (v - cy) ** 2 <= r * r for cx, cy, r in CLOUD_CIRCLES):
+        return True
+    x0, y0, x1, y1 = CLOUD_BASE
+    return x0 <= u <= x1 and y0 <= v <= y1
+
+
+def in_bucket(u, v):
+    if not (BUCKET_TOP <= v <= BUCKET_BOTTOM):
+        return False
+    t = (v - BUCKET_TOP) / (BUCKET_BOTTOM - BUCKET_TOP)
+    left = BUCKET_TOP_L + (BUCKET_BOTTOM_L - BUCKET_TOP_L) * t
+    right = BUCKET_TOP_R + (BUCKET_BOTTOM_R - BUCKET_TOP_R) * t
+    if not (left <= u <= right):
+        return False
+    gap_lo, gap_hi = BUCKET_RIM_GAP
+    return not (gap_lo <= v <= gap_hi)
+
+
+def coverage(px, py, size, sub=4):
+    """Fraction of pixel (px, py) covered by the cloud+bucket glyph, via
+    sub x sub supersampling, in a fixed 0..16 unit space (any icon size)."""
+    cell = 16 / size
+    hits = 0
+    for dy in range(sub):
+        v = (py + (dy + 0.5) / sub) * cell
+        for dx in range(sub):
+            u = (px + (dx + 0.5) / sub) * cell
+            if in_cloud(u, v) or in_bucket(u, v):
+                hits += 1
+    return hits / (sub * sub)
+
+
+def render(size):
+    pixels = []
+    for py in range(size):
+        row = []
+        for px in range(size):
+            f = coverage(px, py, size)
+            row.append(tuple(round(BG[i] + (FG[i] - BG[i]) * f) for i in range(3)))
+        pixels.append(row)
     return pixels
 
 
@@ -52,21 +83,10 @@ def write_png(path, pixels):
     path.write_bytes(sig + chunk(b"IHDR", ihdr) + chunk(b"IDAT", idat) + chunk(b"IEND", b""))
 
 
-def downscale(pixels, target):
-    size = len(pixels)
-    factor = size / target
-    return [
-        [pixels[int(y * factor)][int(x * factor)] for x in range(target)]
-        for y in range(target)
-    ]
-
-
 def main():
     ICON_DIR.mkdir(parents=True, exist_ok=True)
-    full = bucket_pixels(SIZE)
     for target in (16, 48, 128):
-        pixels = full if target == SIZE else downscale(full, target)
-        write_png(ICON_DIR / f"icon{target}.png", pixels)
+        write_png(ICON_DIR / f"icon{target}.png", render(target))
     print(f"Wrote icons to {ICON_DIR}")
 
 
