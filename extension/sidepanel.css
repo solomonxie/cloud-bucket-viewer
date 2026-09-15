@@ -1,33 +1,44 @@
+/* color-scheme: light dark tells Chrome this UI supports both, so native
+   form controls/scrollbars auto-switch with the OS/browser theme on top of
+   the custom tokens below — no JS theme toggle needed. */
 :root {
   color-scheme: light dark;
   --bg: #ffffff;
-  --bg-subtle: #f7f7f8;
-  --border: #e5e5e7;
-  --text: #18181b;
-  --text-muted: #71717a;
+  --bg-elevated: #ffffff;
+  --bg-subtle: #f6f6f8;
+  --border: #e6e6ea;
+  --text: #16161a;
+  --text-muted: #6f6f78;
   --accent: #d9720a;
+  --accent-hover: #c2650a;
   --accent-contrast: #ffffff;
   --accent-subtle: #fdf1e3;
   --danger: #dc2626;
   --danger-subtle: #fef2f2;
-  --shadow: 0 12px 32px rgba(15, 15, 20, 0.16);
-  --radius-sm: 6px;
-  --radius-md: 10px;
+  --shadow-sm: 0 1px 2px rgba(15, 15, 20, 0.06);
+  --shadow: 0 20px 40px -8px rgba(15, 15, 20, 0.18), 0 2px 10px rgba(15, 15, 20, 0.07);
+  --radius-sm: 7px;
+  --radius-md: 11px;
+  --radius-lg: 16px;
+  --transition: 150ms ease;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #19191c;
-    --bg-subtle: #212124;
-    --border: #303034;
-    --text: #f2f2f3;
-    --text-muted: #9c9ca3;
+    --bg: #18181b;
+    --bg-elevated: #202024;
+    --bg-subtle: #222226;
+    --border: #303036;
+    --text: #f3f3f4;
+    --text-muted: #9c9ca5;
     --accent: #f0a848;
-    --accent-contrast: #1a1a1a;
+    --accent-hover: #f5ba6c;
+    --accent-contrast: #1a1408;
     --accent-subtle: rgba(240, 168, 72, 0.14);
     --danger: #f87171;
     --danger-subtle: rgba(248, 113, 113, 0.14);
-    --shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.55), 0 2px 10px rgba(0, 0, 0, 0.35);
   }
 }
 
@@ -35,14 +46,42 @@
   box-sizing: border-box;
 }
 
+/* A later, more specific rule (e.g. `.status { display: flex }`) otherwise
+   beats the UA's `[hidden] { display: none }` in the cascade — pin it down
+   globally so toggling `.hidden` always actually hides the element. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
   margin: 0;
   display: flex;
   flex-direction: column;
   height: 100vh;
   background: var(--bg);
   color: var(--text);
+}
+
+/* Slim, theme-matched scrollbars instead of the chunky OS default. */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+  border: 2px solid var(--bg);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 .icon {
@@ -57,11 +96,17 @@ button {
   font: inherit;
   cursor: pointer;
   color: var(--text);
+  transition: background-color var(--transition), border-color var(--transition),
+    color var(--transition), box-shadow var(--transition), transform 100ms ease;
 }
 
 button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .btn {
@@ -72,15 +117,19 @@ button:focus-visible {
   background: var(--bg);
   border-radius: var(--radius-sm);
   padding: 5px 10px;
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
 }
 
 .btn:hover:not(:disabled) {
   border-color: var(--accent);
+  color: var(--accent);
 }
 
 .btn:disabled {
   opacity: 0.45;
   cursor: default;
+  box-shadow: none;
 }
 
 .btn.primary {
@@ -89,9 +138,20 @@ button:focus-visible {
   color: var(--accent-contrast);
 }
 
+.btn.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--accent-contrast);
+}
+
 .btn.danger {
   color: var(--danger);
   border-color: var(--danger);
+}
+
+.btn.danger:hover:not(:disabled) {
+  background: var(--danger-subtle);
+  color: var(--danger);
 }
 
 .icon-btn {
@@ -145,6 +205,7 @@ button:focus-visible {
   gap: 6px;
   padding: 8px;
   border-bottom: 1px solid var(--border);
+  background: var(--bg-subtle);
 }
 
 .brand {
@@ -167,6 +228,16 @@ button:focus-visible {
   border-radius: var(--radius-sm);
   background: var(--bg);
   color: var(--text);
+  transition: border-color var(--transition);
+}
+
+.topbar select:hover {
+  border-color: var(--accent);
+}
+
+.topbar select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* --- Breadcrumb ------------------------------------------------------- */
@@ -189,7 +260,7 @@ button:focus-visible {
   gap: 4px;
   border: none;
   background: none;
-  padding: 2px 4px;
+  padding: 3px 6px;
   border-radius: var(--radius-sm);
   color: var(--text-muted);
   flex-shrink: 0;
@@ -198,11 +269,12 @@ button:focus-visible {
 .breadcrumb button:last-child {
   color: var(--text);
   font-weight: 600;
+  background: var(--bg-subtle);
 }
 
 .breadcrumb button:hover {
-  background: var(--bg-subtle);
-  color: var(--text);
+  background: var(--accent-subtle);
+  color: var(--accent);
 }
 
 .breadcrumb .sep {
@@ -224,6 +296,52 @@ button:focus-visible {
   gap: 6px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--border);
+}
+
+.icon-btn.active {
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+
+/* --- Clipboard pill ------------------------------------------------------- */
+
+.clipboard-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--accent);
+  background: var(--accent-subtle);
+  border-bottom: 1px solid var(--border);
+}
+
+.clipboard-pill .count {
+  flex: 1;
+}
+
+/* --- Selection bar ------------------------------------------------------- */
+
+.selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--accent-subtle);
+}
+
+.selection-bar .select-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.row-check {
+  flex-shrink: 0;
 }
 
 .status {
@@ -282,10 +400,20 @@ dialog .status.error {
   gap: 8px;
   padding: 7px 8px;
   border-bottom: 1px solid var(--border);
+  transition: background-color var(--transition), box-shadow var(--transition);
 }
 
 .row:hover {
   background: var(--bg-subtle);
+}
+
+.row.selectable {
+  cursor: pointer;
+}
+
+.row.selectable.selected {
+  background: var(--accent-subtle);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .row .badge {
@@ -298,6 +426,7 @@ dialog .status.error {
   background: var(--bg-subtle);
   color: var(--text-muted);
   flex-shrink: 0;
+  transition: background-color var(--transition), color var(--transition);
 }
 
 .row .badge.folder {
@@ -354,6 +483,14 @@ button.name-btn:hover {
   margin: 8px;
 }
 
+.list-stats {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
 /* --- Empty state -------------------------------------------------------- */
 
 .empty-state {
@@ -368,9 +505,13 @@ button.name-btn:hover {
 }
 
 .empty-state .icon {
-  width: 32px;
-  height: 32px;
-  opacity: 0.5;
+  width: 26px;
+  height: 26px;
+  padding: 13px;
+  box-sizing: content-box;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
 }
 
 .empty-state .primary {
@@ -381,22 +522,39 @@ button.name-btn:hover {
 /* --- Dialogs -------------------------------------------------------- */
 
 dialog {
-  border: none;
-  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   padding: 16px;
   width: 300px;
   box-shadow: var(--shadow);
-  background: var(--bg);
+  background: var(--bg-elevated);
   color: var(--text);
 }
 
+dialog[open] {
+  animation: dialog-in 160ms ease-out;
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 dialog::backdrop {
-  background: rgba(15, 15, 20, 0.35);
+  background: rgba(15, 15, 20, 0.4);
+  backdrop-filter: blur(2px);
 }
 
 dialog h2 {
   margin: 0 0 12px;
   font-size: 15px;
+  letter-spacing: -0.01em;
 }
 
 .field {
@@ -466,6 +624,20 @@ dialog h2 {
 .hint {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.link-btn {
+  display: block;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: -4px 0 10px;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.link-btn:hover {
+  text-decoration: underline;
 }
 
 .modal-actions {
@@ -574,4 +746,238 @@ dialog h2 {
   font-size: 12px;
   color: var(--text-muted);
   word-break: break-word;
+}
+
+/* --- Share dialog ------------------------------------------------------- */
+
+.share-dialog {
+  width: 320px;
+}
+
+.share-row {
+  margin-bottom: 10px;
+}
+
+.share-row > span {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.share-row em {
+  font-style: normal;
+  opacity: 0.8;
+}
+
+.share-value {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.share-value input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.share-value select {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* --- Object detail sheet -------------------------------------------------- */
+
+dialog.sheet-dialog {
+  position: fixed;
+  inset: auto 0 0 0;
+  margin: 0;
+  width: 100%;
+  max-width: none;
+  height: 50%;
+  border-width: 1px 0 0 0;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 0;
+}
+
+/* display must only apply while open — a <dialog> with no [open] attribute
+   is closed and should stay hidden (the UA default), not forced visible. */
+dialog.sheet-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  animation: sheet-up 0.18s ease-out;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.sheet-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sheet-header h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+
+.detail-meta {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 8px 10px;
+  font-size: 12px;
+}
+
+.detail-meta dt {
+  color: var(--text-muted);
+}
+
+.detail-meta dd {
+  margin: 0;
+  word-break: break-all;
+}
+
+.sheet-dialog .modal-actions {
+  padding: 10px 16px 14px;
+  margin: 0;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sheet-actions {
+  justify-content: center;
+  gap: 10px;
+}
+
+/* --- Object preview / editor ------------------------------------------------ */
+
+.detail-preview:empty {
+  display: none;
+}
+
+.detail-preview {
+  margin-bottom: 12px;
+}
+
+.detail-preview img,
+.detail-preview video {
+  display: block;
+  max-width: 100%;
+  max-height: 260px;
+  margin: 0 auto;
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+}
+
+.detail-preview audio {
+  width: 100%;
+}
+
+.detail-preview .pdf-frame {
+  width: 100%;
+  height: 320px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.detail-preview .preview-fallback {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.detail-preview .preview-toolbar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.detail-preview .preview-toolbar .btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.detail-editor {
+  width: 100%;
+  min-height: 200px;
+  resize: vertical;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  color: var(--text);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+#detailSaveBtn.dirty {
+  color: var(--accent);
+}
+
+.markdown-preview {
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.markdown-preview :first-child {
+  margin-top: 0;
+}
+
+.markdown-preview pre {
+  background: var(--bg-subtle);
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+
+.markdown-preview code {
+  background: var(--bg-subtle);
+  padding: 1px 4px;
+  border-radius: 4px;
+  font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.markdown-preview pre code {
+  padding: 0;
+  background: none;
+}
+
+.markdown-preview blockquote {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--border);
+  color: var(--text-muted);
 }
