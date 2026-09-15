@@ -68,8 +68,8 @@ read that object until it expires, with no further authentication.
 
 **File browser**
 
-<img src="docs/screenshots/file-browser.png" alt="File browser" width="315">
+<img src="docs/screenshots/file-browser.png" alt="File browser" width="200">
 
 **Object preview**
 
-<img src="docs/screenshots/preview.png" alt="Object preview" width="309">
+<img src="docs/screenshots/preview.png" alt="Object preview" width="200">
