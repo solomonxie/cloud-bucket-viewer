@@ -27,6 +27,7 @@
     "https://*.amazonaws.com/*",
     "https://*.r2.cloudflarestorage.com/*",
     "https://storage.googleapis.com/*",
+    "https://oauth2.googleapis.com/*",
     "https://*.blob.core.windows.net/*"
   ],
   "optional_host_permissions": ["https://*/*"]

@@ -74,16 +74,20 @@
           <span id="connBucketLabel">Bucket name</span>
           <input id="connBucket" required autocomplete="off" placeholder="my-bucket" />
         </label>
-        <label class="field">
+        <label class="field" id="connAccessKeyField">
           <span id="connAccessKeyLabel">Access key ID</span>
-          <input id="connAccessKey" required autocomplete="off" />
+          <input id="connAccessKey" autocomplete="off" />
         </label>
-        <label class="field">
+        <label class="field" id="connSecretKeyField">
           <span id="connSecretKeyLabel">Secret access key</span>
           <span class="input-with-action">
-            <input id="connSecretKey" type="password" required autocomplete="off" />
+            <input id="connSecretKey" type="password" autocomplete="off" />
             <button type="button" id="toggleSecretBtn" class="icon-btn ghost" title="Show/hide" aria-label="Show or hide secret key"></button>
           </span>
+        </label>
+        <label class="field" id="connServiceAccountJsonField">
+          <span>Service account JSON key</span>
+          <textarea id="connServiceAccountJson" rows="5" autocomplete="off" placeholder='{"type": "service_account", "client_email": "...", "private_key": "...", ...}'></textarea>
         </label>
         <label class="field">
           <span>Key prefix <em>(optional, starting folder)</em></span>

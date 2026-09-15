@@ -1,6 +1,7 @@
 import { detectBucketRegion } from "./lib/s3-client.js";
 import { formatSize } from "./lib/format.js";
 import { createClient } from "./lib/client.js";
+import { parseConnectionString } from "./lib/azure-client.js";
 import {
   getConnections,
   upsertConnection,
@@ -49,10 +50,14 @@ const els = {
   connTypeHint: $("connTypeHint"),
   connBucketLabel: $("connBucketLabel"),
   connBucket: $("connBucket"),
+  connAccessKeyField: $("connAccessKeyField"),
   connAccessKeyLabel: $("connAccessKeyLabel"),
   connAccessKey: $("connAccessKey"),
+  connSecretKeyField: $("connSecretKeyField"),
   connSecretKeyLabel: $("connSecretKeyLabel"),
   connSecretKey: $("connSecretKey"),
+  connServiceAccountJsonField: $("connServiceAccountJsonField"),
+  connServiceAccountJson: $("connServiceAccountJson"),
   connPrefix: $("connPrefix"),
   connName: $("connName"),
   connAdvanced: $("connAdvanced"),
@@ -1037,15 +1042,21 @@ els.fileList.addEventListener("drop", async (e) => {
 
 // --- Connection modal ----------------------------------------------------------
 
-// Every type stores into the same fields (bucket/accessKeyId/secretAccessKey)
-// so store.js and the rest of the app stay type-agnostic — only the labels
-// and which Advanced fields apply change per type. See docs/design.md.
+// Every type stores into the same underlying connection fields where the
+// shape matches (bucket/accessKeyId/secretAccessKey); Azure's single
+// connection string and GCS's service account JSON get parsed down to
+// those same fields (or, for GCS, a dedicated serviceAccountJson field) in
+// saveConnectionFromForm — only the form labels and which fields apply
+// change per type here. See docs/design.md.
 const TYPE_META = {
   s3: {
     bucketLabel: "Bucket name",
     bucketPlaceholder: "my-bucket",
+    showAccessKey: true,
     keyLabel: "Access key ID",
+    showSecretKey: true,
     secretLabel: "Secret access key",
+    showServiceAccountJson: false,
     hint: "AWS S3. Region is auto-detected from the bucket.",
     showRegion: true,
     showEndpoint: false,
@@ -1054,8 +1065,11 @@ const TYPE_META = {
   "s3-compat": {
     bucketLabel: "Bucket name",
     bucketPlaceholder: "my-bucket",
+    showAccessKey: true,
     keyLabel: "Access key ID",
+    showSecretKey: true,
     secretLabel: "Secret access key",
+    showServiceAccountJson: false,
     hint: "Any S3-compatible service — Cloudflare R2, MinIO, etc. Needs a custom endpoint below.",
     showRegion: true,
     showEndpoint: true,
@@ -1064,9 +1078,10 @@ const TYPE_META = {
   gcs: {
     bucketLabel: "Bucket name",
     bucketPlaceholder: "my-bucket",
-    keyLabel: "HMAC access key",
-    secretLabel: "HMAC secret",
-    hint: "Uses a Cloud Storage HMAC key pair (Settings → Interoperability in the GCS console).",
+    showAccessKey: false,
+    showSecretKey: false,
+    showServiceAccountJson: true,
+    hint: "Paste a service account JSON key (IAM & Admin → Service Accounts → Keys → Add key → JSON) with Storage Object Admin access on the bucket.",
     showRegion: false,
     showEndpoint: false,
     showPathStyle: false,
@@ -1074,9 +1089,11 @@ const TYPE_META = {
   azure: {
     bucketLabel: "Container name",
     bucketPlaceholder: "my-container",
-    keyLabel: "Storage account name",
-    secretLabel: "Account key",
-    hint: "Uses a Shared Key from the storage account's Access keys page.",
+    showAccessKey: false,
+    showSecretKey: true,
+    secretLabel: "Connection string",
+    showServiceAccountJson: false,
+    hint: "Uses the storage account's connection string (Access keys page → Connection string).",
     showRegion: false,
     showEndpoint: false,
     showPathStyle: false,
@@ -1087,8 +1104,18 @@ function applyTypeToForm(type) {
   const meta = TYPE_META[type] || TYPE_META.s3;
   els.connBucketLabel.textContent = meta.bucketLabel;
   els.connBucket.placeholder = meta.bucketPlaceholder;
-  els.connAccessKeyLabel.textContent = meta.keyLabel;
-  els.connSecretKeyLabel.textContent = meta.secretLabel;
+
+  els.connAccessKeyField.hidden = !meta.showAccessKey;
+  els.connAccessKey.required = meta.showAccessKey;
+  if (meta.showAccessKey) els.connAccessKeyLabel.textContent = meta.keyLabel;
+
+  els.connSecretKeyField.hidden = !meta.showSecretKey;
+  els.connSecretKey.required = meta.showSecretKey;
+  if (meta.showSecretKey) els.connSecretKeyLabel.textContent = meta.secretLabel;
+
+  els.connServiceAccountJsonField.hidden = !meta.showServiceAccountJson;
+  els.connServiceAccountJson.required = meta.showServiceAccountJson;
+
   els.connTypeHint.textContent = meta.hint;
   els.connRegionField.hidden = !meta.showRegion;
   els.connEndpointField.hidden = !meta.showEndpoint;
@@ -1103,9 +1130,13 @@ function openConnectionModal(conn) {
   applyTypeToForm(els.connType.value);
   els.connBucket.value = conn?.bucket || "";
   els.connAccessKey.value = conn?.accessKeyId || "";
-  els.connSecretKey.value = conn?.secretAccessKey || "";
+  els.connSecretKey.value =
+    conn?.type === "azure" && conn.accessKeyId
+      ? `DefaultEndpointsProtocol=https;AccountName=${conn.accessKeyId};AccountKey=${conn.secretAccessKey};EndpointSuffix=core.windows.net`
+      : conn?.secretAccessKey || "";
   els.connSecretKey.type = "password";
   els.toggleSecretBtn.innerHTML = icon("eye");
+  els.connServiceAccountJson.value = conn?.serviceAccountJson || "";
   els.connPrefix.value = conn?.prefix || "";
   els.connName.value = conn?.name && conn.name !== conn.bucket ? conn.name : "";
   els.connRegion.value = conn?.region || "";
@@ -1147,14 +1178,14 @@ async function saveConnectionFromForm() {
     type,
     bucket,
     name: els.connName.value.trim() || bucket,
-    accessKeyId: els.connAccessKey.value.trim(),
-    secretAccessKey: els.connSecretKey.value.trim(),
     prefix: normalizePrefix(els.connPrefix.value.trim()),
   };
 
   els.connSaveBtn.disabled = true;
   try {
     if (type === "s3-compat") {
+      conn.accessKeyId = els.connAccessKey.value.trim();
+      conn.secretAccessKey = els.connSecretKey.value.trim();
       conn.endpoint = els.connEndpoint.value.trim();
       conn.pathStyle = els.connPathStyle.checked;
       const granted = await chrome.permissions.request({ origins: [`https://${conn.endpoint}/*`] });
@@ -1164,14 +1195,35 @@ async function saveConnectionFromForm() {
       }
       conn.region = els.connRegion.value.trim() || "us-east-1";
     } else if (type === "gcs") {
-      // Google's XML API accepts AWS SigV4 requests signed with HMAC keys —
-      // same wire protocol as S3, fixed endpoint, no region concept.
-      conn.endpoint = "storage.googleapis.com";
-      conn.pathStyle = true;
-      conn.region = "auto";
+      // Service account JSON key — GCP's non-interactive credential, not
+      // HMAC interop keys and not an OAuth sign-in flow.
+      const raw = els.connServiceAccountJson.value.trim();
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        setFormStatus("That doesn't look like valid JSON.", { error: true });
+        return false;
+      }
+      if (!parsed.client_email || !parsed.private_key) {
+        setFormStatus("JSON key is missing client_email or private_key.", { error: true });
+        return false;
+      }
+      conn.serviceAccountJson = raw;
     } else if (type === "azure") {
-      // Host is derived from the account name (accessKeyId) — see AzureClient.
+      // A single connection string, parsed into the account name/key
+      // AzureClient signs with — see parseConnectionString().
+      try {
+        const { accountName, accountKey } = parseConnectionString(els.connSecretKey.value.trim());
+        conn.accessKeyId = accountName;
+        conn.secretAccessKey = accountKey;
+      } catch (err) {
+        setFormStatus(err.message, { error: true });
+        return false;
+      }
     } else {
+      conn.accessKeyId = els.connAccessKey.value.trim();
+      conn.secretAccessKey = els.connSecretKey.value.trim();
       let region = els.connRegion.value.trim();
       if (!region) {
         setFormStatus("Detecting region…", { loading: true });
