@@ -12,11 +12,13 @@ on it.
 | `extension/sidepanel.html` | markup: toolbar, breadcrumb, file list, two `<dialog>` modals |
 | `extension/sidepanel.css` | all styling, no preprocessor |
 | `extension/sidepanel.js` | app state + DOM rendering + event wiring |
-| `extension/lib/client.js` | `createClient(conn)` — picks `S3Client` or `AzureClient` by `conn.type` |
+| `extension/lib/client.js` | `createClient(conn)` — picks `S3Client`/`AzureClient`/`GcsClient` by `conn.type` |
 | `extension/lib/sigv4.js` | `signRequest()` — AWS Signature V4; `presignUrl()` — query-string presigning |
-| `extension/lib/s3-client.js` | `S3Client` class — S3-dialect REST calls (S3, S3-compatible, GCS) + XML parsing |
+| `extension/lib/s3-client.js` | `S3Client` class — S3-dialect REST calls (S3, S3-compatible) + XML parsing |
 | `extension/lib/azure-sig.js` | `signRequest()` — Azure Shared Key; `presignUrl()` — Service SAS |
-| `extension/lib/azure-client.js` | `AzureClient` class — Blob REST calls + XML parsing |
+| `extension/lib/azure-client.js` | `AzureClient` class — Blob REST calls, XML parsing, `parseConnectionString()` |
+| `extension/lib/gcs-sig.js` | `getAccessToken()` — service-account JWT Bearer flow; `signedUrlV4()` — GOOG4-RSA-SHA256 |
+| `extension/lib/gcs-client.js` | `GcsClient` class — JSON Storage API calls |
 | `extension/lib/store.js` | connections CRUD, export/import, in `chrome.storage.local` |
 | `extension/lib/format.js` | `formatSize()` |
 | `extension/lib/icons.js` | inline-SVG icon set (`icon()`) + `iconForFileName()` by extension |
@@ -44,18 +46,14 @@ returns the full header set including `Authorization`. Notes:
 
 ## Client dispatch (`lib/client.js`)
 
-`createClient(conn)` returns `new AzureClient(conn)` for `conn.type === "azure"`,
-`new S3Client(conn)` otherwise — `"s3"`, `"s3-compat"` and `"gcs"` all speak
-the same S3-dialect wire protocol. Both classes expose the same method
-surface (below), so `sidepanel.js` calls `state.client.listObjects(...)`
-etc. without ever branching on type itself.
+`createClient(conn)` picks `AzureClient`, `GcsClient`, or `S3Client` by
+`conn.type` (`"s3"`/`"s3-compat"` fall through to `S3Client`). All three
+expose the same method surface (below), so `sidepanel.js` calls
+`state.client.listObjects(...)` etc. without ever branching on type itself.
 
 ## S3 client (`lib/s3-client.js`)
 
-Backs `"s3"`, `"s3-compat"` and `"gcs"` connections — GCS's XML API accepts
-AWS SigV4 requests signed with an HMAC key pair, so it's just a preset
-endpoint (`storage.googleapis.com`, path-style, region `"auto"`) rather than
-a separate client. `new S3Client(connection)` then:
+Backs `"s3"` and `"s3-compat"` connections. `new S3Client(connection)` then:
 
 - `listObjects(bucket, prefix, token)` → one page (`PAGE_SIZE = 100`),
   `delimiter=/`; pass the previous page's `nextToken` to page forward.
@@ -90,8 +88,10 @@ contexts — this is why client calls happen from `sidepanel.js`, not
 
 ## Azure client (`lib/azure-client.js`, `lib/azure-sig.js`)
 
-Backs `"azure"` connections. `accessKeyId`/`secretAccessKey` hold the storage
-account name / account key; the host is derived
+Backs `"azure"` connections. The connection form takes one field, the
+storage account's connection string; `parseConnectionString()` splits it
+into `accessKeyId`/`secretAccessKey` (account name/key) at save time — see
+`saveConnectionFromForm()` below. The host is derived
 (`{account}.blob.core.windows.net`), no custom endpoint field. Same method
 surface as `S3Client` (`listObjects`, `getObjectBlob`, `copyObject`, …),
 mapped onto the Blob REST API — containers instead of buckets, `List Blobs`
@@ -115,6 +115,38 @@ name) but Shared Key requires it in the signature — `bodyLength()` computes
 it from the body and it's threaded through `request()`'s `contentLength`
 option purely for signing; the browser sends the matching real length on
 the wire automatically.
+
+## GCS client (`lib/gcs-client.js`, `lib/gcs-sig.js`)
+
+Backs `"gcs"` connections. The connection form takes a pasted service
+account JSON key, stored as-is (string) in `conn.serviceAccountJson` —
+`GcsClient`'s constructor `JSON.parse()`s it. No `accessKeyId`/
+`secretAccessKey` for this type.
+
+`gcs-sig.js#getAccessToken(serviceAccount)` implements the JWT Bearer Token
+flow (RFC 7523): builds a JWT (`{alg: "RS256", typ: "JWT"}` header, claims
+`iss`/`scope`/`aud`/`iat`/`exp`), signs it with the service account's RSA
+private key (`crypto.subtle.importKey("pkcs8", ...)` on the PEM from
+`private_key`, then `sign("RSASSA-PKCS1-v1_5", ...)`), and POSTs it to
+Google's token endpoint for a short-lived `access_token` — cached per
+`client_email`, refreshed a minute before it actually expires. Every
+`GcsClient` request carries that as `Authorization: Bearer …`.
+
+`gcs-sig.js#signedUrlV4()` is the Share modal's signed-link option:
+GOOG4-RSA-SHA256, structurally the same canonical-request/string-to-sign
+shape as `sigv4.js#presignUrl()` but RSA-signed (not HMAC) and always
+scoped to the pseudo-region `"auto"`.
+
+`GcsClient` talks to the **JSON** Storage API
+(`storage.googleapis.com/storage/v1/...`), not the XML API the other
+clients use — `listObjects`/`listAllKeys` parse `{ items, prefixes,
+nextPageToken }` JSON instead of `DOMParser`-ed XML; `size` comes back as a
+string (int64) and needs `Number()`. Uploads go through the separate
+`/upload/storage/v1/...` endpoint with `uploadType=media` (simple upload —
+fine for this app's file sizes; a resumable upload would be needed for very
+large files, out of scope, see design.md's non-goals). Copy is
+`POST .../o/{srcObject}/copyTo/b/{dstBucket}/o/{dstObject}`, synchronous, no
+polling needed (unlike Azure's async copy).
 
 ## Storage (`lib/store.js`)
 
@@ -158,30 +190,39 @@ Upload button.
 ## Connection form (`openConnectionModal()`, `saveConnectionFromForm()`)
 
 The `#connType` select drives everything else in the form: `TYPE_META` maps
-each type to its field labels (`"Bucket name"` vs `"Container name"`,
-`"Access key ID"` vs `"Storage account name"`, …) and which Advanced fields
-apply (region/endpoint/path-style — S3 and S3-compatible only);
-`applyTypeToForm()` applies that on open and on every `#connType` change.
-Every type writes into the same underlying fields (`bucket`, `accessKeyId`,
-`secretAccessKey`) regardless of label, so switching type mid-edit doesn't
-lose what's typed.
+each type to its field labels and which fields apply —
+`showAccessKey`/`showSecretKey` (S3 shows both as key ID/secret; Azure shows
+only the secret field, relabeled "Connection string"; GCS shows neither),
+`showServiceAccountJson` (GCS only, a `<textarea>`), and the Advanced
+region/endpoint/path-style fields (S3/S3-compatible only). `applyTypeToForm()`
+applies that (labels, `hidden`, `required`) on open and on every `#connType`
+change.
 
 Save doesn't just persist the form — it proves the connection actually
 works first, with each step reflected in `#connFormStatus` (spinner icon +
 text, via `setFormStatus()`, the same `applyStatus()` helper the main status
 bar uses):
 
-1. Type-specific setup: S3 detects region if blank (`detectBucketRegion()`,
-   "Detecting region…"); S3-compatible requests runtime permission for its
-   custom endpoint; GCS/Azure need no extra step (fixed/derived endpoint,
-   pre-granted permission — see design.md).
+1. Type-specific setup, building `conn` from the raw form fields:
+   - **s3**: detects region if blank (`detectBucketRegion()`, "Detecting
+     region…").
+   - **s3-compat**: requests runtime permission for its custom endpoint.
+   - **azure**: `parseConnectionString()` on `#connSecretKey`'s value (the
+     connection string) → `accessKeyId`/`secretAccessKey`; a parse failure
+     (missing `AccountName`/`AccountKey`) shows in the form and stops here.
+   - **gcs**: `JSON.parse()`s `#connServiceAccountJson`'s value, checks for
+     `client_email`/`private_key`, and stores the raw string as
+     `conn.serviceAccountJson`; a parse/shape failure stops here too.
+   - GCS/Azure need no permission request (pre-granted hosts — see
+     design.md).
 2. `createClient(conn).listObjects(...)` against the real bucket/prefix
    ("Checking bucket access…") — this is a throwaway client for the
-   in-progress form values, not `state.client`.
+   in-progress form values, not `state.client`. For GCS this is also the
+   first real exercise of the JWT → access-token exchange.
 3. Only on success does it call `upsertConnection()` and close the dialog;
-   on failure the error (see the `<Code>: <Message>` note above) shows in
-   the modal and the dialog stays open so the user can fix it. The Save
-   button is disabled for the duration to prevent double-submits.
+   on failure the error shows in the modal and the dialog stays open so the
+   user can fix it. The Save button is disabled for the duration to prevent
+   double-submits.
 
 ## Clipboard copy/cut/paste (`sidepanel.js`)
 
@@ -219,10 +260,10 @@ of losing the edit — see `closeDetailModal()`.
 
 ## Adding a new bucket operation
 
-1. Add the method to `S3Client` (`lib/s3-client.js`) using `this.request()`
-   (handles signing + error surfacing) — and to `AzureClient`
-   (`lib/azure-client.js`) the same way, under the same method name, so
-   `sidepanel.js` can call it without branching on type.
+1. Add the method to `S3Client` (`lib/s3-client.js`), `AzureClient`
+   (`lib/azure-client.js`) and `GcsClient` (`lib/gcs-client.js`) — each using
+   its own `this.request()` (handles auth + error surfacing) — under the
+   same method name, so `sidepanel.js` can call it without branching on type.
 2. Wire a UI trigger in `sidepanel.js` (toolbar button or row action), using
    the `withStatus()` helper so busy/error states show in the status bar.
 

@@ -1,5 +1,21 @@
 import { signRequest, presignUrl } from "./azure-sig.js";
 
+// "DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;EndpointSuffix=core.windows.net"
+// — the connection-string shape Azure's own portal and SDKs hand out, so
+// the connection form asks for this one string instead of two fields.
+export function parseConnectionString(str) {
+  const parts = {};
+  for (const segment of str.split(";")) {
+    const idx = segment.indexOf("=");
+    if (idx < 0) continue;
+    parts[segment.slice(0, idx).trim()] = segment.slice(idx + 1).trim();
+  }
+  if (!parts.AccountName || !parts.AccountKey) {
+    throw new Error("Invalid connection string: expected AccountName and AccountKey");
+  }
+  return { accountName: parts.AccountName, accountKey: parts.AccountKey };
+}
+
 const PAGE_SIZE = 100;
 
 function text(el, tag) {
