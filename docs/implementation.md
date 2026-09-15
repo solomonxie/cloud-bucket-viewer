@@ -12,10 +12,12 @@ on it.
 | `extension/sidepanel.html` | markup: toolbar, breadcrumb, file list, two `<dialog>` modals |
 | `extension/sidepanel.css` | all styling, no preprocessor |
 | `extension/sidepanel.js` | app state + DOM rendering + event wiring |
-| `extension/lib/sigv4.js` | `signRequest()` — AWS Signature V4 |
+| `extension/lib/sigv4.js` | `signRequest()` — AWS Signature V4; `presignUrl()` — query-string presigning |
 | `extension/lib/s3-client.js` | `S3Client` class — REST calls + XML parsing, `formatSize()` |
 | `extension/lib/store.js` | connections CRUD, export/import, in `chrome.storage.local` |
 | `extension/lib/icons.js` | inline-SVG icon set (`icon()`) + `iconForFileName()` by extension |
+| `extension/lib/preview.js` | `previewKind()`, `isTooLargeForTextPreview()`, `mimeForName()` |
+| `extension/lib/markdown.js` | `renderMarkdown()` — dependency-free Markdown → HTML |
 | `scripts/gen_icons.py` | regenerates `extension/icons/*.png` (stdlib only, no Pillow) |
 
 ## SigV4 signer (`lib/sigv4.js`)
@@ -30,16 +32,26 @@ returns the full header set including `Authorization`. Notes:
   of hashing the body — avoids reading large file blobs twice.
 - Canonical query string sorts params; canonical URI percent-encodes each
   path segment per the AWS spec (`encodeRFC3986`, extra-encodes `! ' ( ) *`).
+- `presignUrl({ method, url, region, accessKeyId, secretAccessKey, expiresIn })`
+  signs into the query string (`X-Amz-Signature` etc.) instead of a header,
+  so the returned URL works standalone (pasted into a browser, `<img src>`,
+  `<video src>`). Payload hash is always `UNSIGNED-PAYLOAD` — presigned URLs
+  are GETs, no body.
 
 ## S3 client (`lib/s3-client.js`)
 
 `new S3Client(connection)` then:
 
-- `listObjects(bucket, prefix, token)` → one page, `delimiter=/`.
+- `listObjects(bucket, prefix, token)` → one page (`PAGE_SIZE = 100`),
+  `delimiter=/`; pass the previous page's `nextToken` to page forward.
 - `listAllKeys(bucket, prefix)` → async generator, no delimiter, paginates
-  via `NextContinuationToken`; used by `deletePrefix()`.
+  via `NextContinuationToken`; used by `deletePrefix()` and `copyPrefix()`.
 - `getObjectBlob`, `deleteObject`, `copyObject`, `moveObject` (copy+delete),
-  `putObject`, `createFolder` (zero-byte key ending in `/`).
+  `copyPrefix` (walks `listAllKeys` and copies each to the same relative
+  path under a new prefix — recursive folder copy/paste), `putObject`,
+  `createFolder` (zero-byte key ending in `/`).
+- `s3Uri`, `unsignedUrl`, `presignedUrl` — the three link kinds the Share
+  modal offers; `presignedUrl` delegates to `sigv4.js#presignUrl`.
 
 `detectBucketRegion(bucket)` is a standalone export (no credentials needed):
 an unauthenticated `HEAD` to `https://{bucket}.s3.amazonaws.com/` gets a
@@ -86,11 +98,13 @@ Object keys ending in `/` (S3 "folder marker" objects) are filtered out of
 the file rows — they're represented by the `CommonPrefixes` folder row
 instead.
 
-Destructive actions (delete, recursive folder delete) confirm via
-`confirmDialog()`, and copy/move/new-folder destinations use `promptDialog()`
-— both built on `<dialog>` (matching the connection/manage modals) instead of
-`window.confirm`/`window.prompt`, so they pick up the extension's own styling
-and dark-mode colors rather than the browser's native alert chrome.
+Destructive actions (delete, recursive folder delete, discarding unsaved
+edits) confirm via `confirmDialog()`, and new-folder naming uses
+`promptDialog()` — both built on `<dialog>` (matching the connection/manage
+modals) instead of `window.confirm`/`window.prompt`, so they pick up the
+extension's own styling and dark-mode colors rather than the browser's
+native alert chrome. Copy/move destinations are no longer a prompt — see
+Clipboard copy/cut/paste below.
 
 Files get a type-specific icon (`iconForFileName()` in `lib/icons.js`, keyed
 off extension) instead of one generic file glyph. Dropping files onto the
@@ -112,6 +126,40 @@ bar uses):
    on failure the error (see the `<Code>: <Message>` note above) shows in
    the modal and the dialog stays open so the user can fix it. The Save
    button is disabled for the duration to prevent double-submits.
+
+## Clipboard copy/cut/paste (`sidepanel.js`)
+
+`state.clipboard` is `{ items, cut, bucket, connectionId }` or `null` — no OS
+clipboard involved, it's in-memory UI state. `setClipboard()` (from a row's
+Copy/Cut button, the bulk bar, or the detail sheet) fills it and shows the
+`#clipboardPill` status indicator; `pasteClipboard()` copies each item into
+`state.prefix` (`S3Client.copyObject`/`copyPrefix`), then deletes the
+sources if `cut` is set. Guards: a paste that would land exactly where an
+item already is, or nest a folder inside itself, is skipped rather than
+erroring. `updateClipboardUI()` disables Paste when the clipboard holds
+items from a different connection than the active one (its credentials may
+not have access to the source bucket).
+
+## Object preview & editing (`sidepanel.js`, `lib/preview.js`)
+
+`previewKind(name)` decides what `renderDetailPreview()` shows in the detail
+sheet:
+
+- `image`/`video`/`audio`/`pdf` → a presigned URL (`S3Client.presignedUrl`)
+  as the element's `src`, so the browser fetches/streams/seeks directly —
+  the extension never holds the file in memory. PDFs also get an "Open in a
+  new tab" fallback link in case the inline `<iframe>` doesn't render.
+- `text`/`markdown` → `getObjectBlob().text()` into an editable `<textarea>`
+  (skipped, with a "too large" note, past `isTooLargeForTextPreview()`'s 2MB
+  cutoff); Markdown adds a Preview/Source toggle backed by
+  `lib/markdown.js#renderMarkdown()`.
+
+`editorState` (module-level, one at a time) tracks `{ key, mimeType,
+original, el }` for the open text editor; `markEditorDirty()` compares
+`el.value` to `original` to enable/disable Save, and `saveEditor()` writes
+back via `putObject` with `mimeForName()`'s content-type. Closing the sheet
+(button, Escape, or backdrop click) while dirty prompts to discard instead
+of losing the edit — see `closeDetailModal()`.
 
 ## Adding a new S3 operation
 
