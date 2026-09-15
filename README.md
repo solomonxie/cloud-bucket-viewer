@@ -67,7 +67,9 @@ read that object until it expires, with no further authentication.
 ## Screenshots
 
 **File browser**
-![File browser](docs/screenshots/file-browser.png)
+
+<img src="docs/screenshots/file-browser.png" alt="File browser" width="315">
 
 **Object preview**
-![Object preview](docs/screenshots/preview.png)
+
+<img src="docs/screenshots/preview.png" alt="Object preview" width="309">
