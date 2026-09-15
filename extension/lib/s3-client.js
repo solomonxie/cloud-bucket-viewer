@@ -177,9 +177,13 @@ export class S3Client {
     await this.putObject(bucket, key, new Uint8Array(0));
   }
 
+  get scheme() {
+    return "s3";
+  }
+
   // Share links: an s3:// URI, an unsigned HTTP URL (only useful on a public
   // bucket/object), and a time-limited SigV4-presigned URL.
-  s3Uri(bucket, key) {
+  resourceUri(bucket, key) {
     return `s3://${bucket}/${key}`;
   }
 
@@ -197,11 +201,4 @@ export class S3Client {
       expiresIn,
     });
   }
-}
-
-export function formatSize(bytes) {
-  if (bytes === 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
-  return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }

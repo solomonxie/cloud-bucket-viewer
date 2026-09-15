@@ -1,6 +1,6 @@
 EXT_DIR := extension
 DIST_DIR := dist
-ZIP := $(DIST_DIR)/s3-viewer.zip
+ZIP := $(DIST_DIR)/cloud-bucket-viewer.zip
 
 .PHONY: help zip clean lint icons
 
