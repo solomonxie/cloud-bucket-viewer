@@ -5,9 +5,10 @@ A Chrome side panel for browsing S3 buckets like a file explorer.
 Add one or more connections — just a bucket name, access key and secret key
 (everything else is optional or auto-detected) — stored only in your
 browser, exportable/importable as JSON. Pick a connection and land straight
-in that bucket, then browse folders and download, copy, move or delete
-objects — all from a side panel that stays open next to whatever tab you're
-on. Works with AWS S3 and S3-compatible services (Cloudflare R2, MinIO, etc).
+in that bucket, then browse folders, preview or edit files, and copy, move
+or delete objects — all from a side panel that stays open next to whatever
+tab you're on. Works with AWS S3 and S3-compatible services (Cloudflare R2,
+MinIO, etc).
 
 No build step, no AWS SDK — plain JS signing S3 requests directly with
 SigV4. See [docs/design.md](docs/design.md) and
@@ -22,8 +23,14 @@ SigV4. See [docs/design.md](docs/design.md) and
 - Save validates the connection against S3 before storing it, with progress
   shown inline (region detection, then a real access check).
 - Keys stored locally (`chrome.storage.local`) only; export/import as JSON.
-- Browse folders → files with breadcrumb navigation.
-- Download, copy, move, delete files. Create folders, recursive-delete folders.
+- Browse folders → files with breadcrumb navigation and pagination.
+- Preview images, video, audio and PDF inline; edit text/code/Markdown files
+  directly (Markdown gets a rendered-preview toggle) and save back to S3.
+- Copy/cut/paste files and folders — clipboard-style, with a status
+  indicator for what's queued — plus multi-select for bulk copy/cut/delete.
+- Share a file as an `s3://` URI, an unsigned HTTP link, or a signed link
+  with a configurable expiry.
+- Download files. Create folders, recursive-delete folders.
 - Upload a file (or drag-and-drop one) into the current folder.
 - Custom endpoint + path-style option for non-AWS S3-compatible services.
 
@@ -54,3 +61,5 @@ Access keys and secret keys are stored in plaintext in
 `chrome.storage.local` (never synced) and are sent only to the S3 endpoint
 the connection names. Exporting connections writes those secrets to a
 plaintext JSON file — handle exported files like any other credential file.
+A "signed link" generated from Share is a presigned URL: anyone with it can
+read that object until it expires, with no further authentication.

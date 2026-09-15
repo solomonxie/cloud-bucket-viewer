@@ -16,15 +16,21 @@ browser tab.
   the bucket name.
 - Keys stored locally only; exportable/importable as JSON.
 - Browse folders → files under that bucket (prefix/delimiter navigation).
-- File ops: download, copy, move, delete. Folder ops: create, recursive delete.
+- File ops: download, copy, cut/move, paste, delete, multi-select bulk
+  versions of each. Folder ops: create, recursive copy, recursive delete.
+- Preview common file types inline (image/video/audio/PDF/text/Markdown);
+  edit text/Markdown in place and save back to S3.
+- Share a file via s3:// URI, unsigned HTTP link, or presigned link.
 - Works against AWS S3 and S3-compatible services (R2, MinIO, etc).
 
 ## Non-goals (v0)
 
 - Bucket creation/policy/ACL management.
 - Multi-part upload for very large files.
-- Sync/watch, drag-and-drop, thumbnails/previews.
-- Cross-connection copy/move (same-connection only for now).
+- Sync/watch, in-browser video/audio transcoding.
+- Cross-connection copy/move (clipboard paste is scoped to the connection
+  items were copied from — cross-bucket copy would need credentials valid
+  for both buckets).
 
 ## Options considered
 
@@ -49,9 +55,12 @@ extension/
   manifest.json        MV3, side_panel + background service worker
   background.js         opens the side panel on the toolbar icon click
   sidepanel.html/.css/.js   the whole UI (vanilla JS, no framework)
-  lib/sigv4.js           AWS SigV4 request signing (SubtleCrypto)
+  lib/sigv4.js           AWS SigV4 request signing (SubtleCrypto) + presigning
   lib/s3-client.js       S3 REST operations (list/get/put/copy/delete), XML parsing
   lib/store.js           connections CRUD + export/import (chrome.storage.local)
+  lib/icons.js           inline-SVG icon set + icon-by-extension lookup
+  lib/preview.js         file name -> preview kind + save content-type
+  lib/markdown.js        dependency-free Markdown -> HTML renderer
 ```
 
 No background/content-script relay for API calls — the side panel is a full
@@ -101,7 +110,19 @@ saved — keeps the install-time permission prompt narrow.
   can always jump back to the connection's starting prefix or the bucket root.
 - **Download**: `GetObject` → blob → `chrome.downloads.download` on an
   object URL.
-- **Copy/Move**: `PUT` with `x-amz-copy-source`; move = copy + `DELETE`.
+- **Copy/Cut/Paste**: Copy or Cut marks item(s) on an in-memory clipboard
+  (shown as a status pill); Paste into the current folder issues `PUT`s with
+  `x-amz-copy-source` (folders: walk + copy every key under the prefix), then
+  `DELETE`s the sources if it was a cut. No OS clipboard involved — state
+  lives in the side panel only, cleared on cut-and-paste or explicitly.
+- **Preview/edit**: image/video/audio/PDF get a presigned URL as the
+  `src`/`href` directly, so the browser streams and range-seeks against S3
+  itself — nothing is buffered through the extension. Text/Markdown is
+  fetched as a blob, shown in an editable textarea, and written back with
+  `PutObject` on Save; files over 2MB skip this and point at Download.
+- **Share**: `s3://` URI (string only), unsigned HTTP URL (works only if the
+  object/bucket is public), or a SigV4 presigned URL (`presignUrl()` in
+  `sigv4.js`, query-string signing) with a chosen expiry.
 - **Delete folder**: list every key under the prefix (paginated,
   non-delimited), delete one by one, no batch-delete API call (keeps the
   signer simple — no request body to sign).
