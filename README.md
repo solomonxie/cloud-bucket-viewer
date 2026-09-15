@@ -63,3 +63,11 @@ the connection names. Exporting connections writes those secrets to a
 plaintext JSON file — handle exported files like any other credential file.
 A "signed link" generated from Share is a presigned URL: anyone with it can
 read that object until it expires, with no further authentication.
+
+## Screenshots
+
+**File browser**
+![File browser](docs/screenshots/file-browser.png)
+
+**Object preview**
+![Object preview](docs/screenshots/preview.png)
