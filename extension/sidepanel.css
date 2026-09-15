@@ -439,6 +439,17 @@ dialog .status.error {
   height: 15px;
 }
 
+button.badge {
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.badge:hover {
+  filter: brightness(1.15);
+}
+
 button.name-btn {
   border: none;
   background: none;
