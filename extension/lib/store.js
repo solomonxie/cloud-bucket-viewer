@@ -7,7 +7,12 @@ export async function getConnections() {
   const { [CONNECTIONS_KEY]: connections = [] } = await chrome.storage.local.get(
     CONNECTIONS_KEY
   );
-  return connections;
+  // Self-heal: earlier versions of the connection form could leave behind
+  // entries with neither a name nor a bucket (nothing to identify or browse
+  // with) — prune those from storage itself instead of showing blank rows.
+  const valid = connections.filter((c) => c.bucket || c.name);
+  if (valid.length !== connections.length) await saveConnections(valid);
+  return valid;
 }
 
 async function saveConnections(connections) {
