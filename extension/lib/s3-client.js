@@ -1,4 +1,6 @@
-import { signRequest } from "./sigv4.js";
+import { signRequest, presignUrl } from "./sigv4.js";
+
+const PAGE_SIZE = 100;
 
 function text(el, tag) {
   return el.getElementsByTagName(tag)[0]?.textContent ?? "";
@@ -25,6 +27,7 @@ function parseListObjects(xml) {
     key: text(c, "Key"),
     size: Number(text(c, "Size") || 0),
     lastModified: text(c, "LastModified"),
+    storageClass: text(c, "StorageClass") || null,
   }));
   return {
     prefixes,
@@ -93,7 +96,7 @@ export class S3Client {
   }
 
   async listObjects(bucket, prefix, continuationToken) {
-    const query = { "list-type": "2", delimiter: "/", prefix };
+    const query = { "list-type": "2", delimiter: "/", prefix, "max-keys": String(PAGE_SIZE) };
     if (continuationToken) query["continuation-token"] = continuationToken;
     const resp = await this.request("GET", bucket, "", { query });
     return parseListObjects(await resp.text());
@@ -146,6 +149,19 @@ export class S3Client {
     await this.deleteObject(sourceBucket, sourceKey);
   }
 
+  // Recursive folder copy: walks every key under sourcePrefix and copies it
+  // to the same relative path under destPrefix.
+  async copyPrefix(bucket, destPrefix, sourceBucket, sourcePrefix, onProgress) {
+    let count = 0;
+    for await (const key of this.listAllKeys(sourceBucket, sourcePrefix)) {
+      const destKey = destPrefix + key.slice(sourcePrefix.length);
+      await this.copyObject(bucket, destKey, sourceBucket, key);
+      count += 1;
+      onProgress?.(count);
+    }
+    return count;
+  }
+
   async putObject(bucket, key, body, contentType) {
     const headers = {};
     if (contentType) headers["content-type"] = contentType;
@@ -159,6 +175,27 @@ export class S3Client {
   async createFolder(bucket, prefix) {
     const key = prefix.endsWith("/") ? prefix : `${prefix}/`;
     await this.putObject(bucket, key, new Uint8Array(0));
+  }
+
+  // Share links: an s3:// URI, an unsigned HTTP URL (only useful on a public
+  // bucket/object), and a time-limited SigV4-presigned URL.
+  s3Uri(bucket, key) {
+    return `s3://${bucket}/${key}`;
+  }
+
+  unsignedUrl(bucket, key) {
+    return this.urlFor(bucket, key).toString();
+  }
+
+  async presignedUrl(bucket, key, expiresIn = 3600) {
+    return presignUrl({
+      method: "GET",
+      url: this.urlFor(bucket, key).toString(),
+      region: this.conn.region || "us-east-1",
+      accessKeyId: this.conn.accessKeyId,
+      secretAccessKey: this.conn.secretAccessKey,
+      expiresIn,
+    });
   }
 }
 
