@@ -25,8 +25,9 @@ for GCS). See [docs/design.md](docs/design.md) and
   auto-detected, name defaults to the bucket name, and a starting key
   prefix is optional.
 - Four connection types: **Amazon S3**, **S3-compatible** (Cloudflare R2,
-  MinIO, etc — custom endpoint), **Azure Blob Storage** (storage account
-  connection string), **Google Cloud Storage** (service account JSON key).
+  MinIO, etc — endpoint + key pair, nothing else to configure), **Azure Blob
+  Storage** (storage account connection string), **Google Cloud Storage**
+  (service account JSON key).
 - Save validates the connection against the provider before storing it,
   with progress shown inline (region detection, then a real access check).
 - Keys stored locally (`chrome.storage.local`) only; export/import as JSON.

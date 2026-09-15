@@ -65,8 +65,6 @@ const els = {
   connRegion: $("connRegion"),
   connEndpointField: $("connEndpointField"),
   connEndpoint: $("connEndpoint"),
-  connPathStyleField: $("connPathStyleField"),
-  connPathStyle: $("connPathStyle"),
   connDeleteBtn: $("connDeleteBtn"),
   connCancelBtn: $("connCancelBtn"),
   connSaveBtn: $("connSaveBtn"),
@@ -1060,7 +1058,6 @@ const TYPE_META = {
     hint: "AWS S3. Region is auto-detected from the bucket.",
     showRegion: true,
     showEndpoint: false,
-    showPathStyle: false,
   },
   "s3-compat": {
     bucketLabel: "Bucket name",
@@ -1070,10 +1067,9 @@ const TYPE_META = {
     showSecretKey: true,
     secretLabel: "Secret access key",
     showServiceAccountJson: false,
-    hint: "Any S3-compatible service — Cloudflare R2, MinIO, etc. Needs a custom endpoint below.",
-    showRegion: true,
+    hint: "Any S3-compatible service — Cloudflare R2, MinIO, etc.",
+    showRegion: false,
     showEndpoint: true,
-    showPathStyle: true,
   },
   gcs: {
     bucketLabel: "Bucket name",
@@ -1084,7 +1080,6 @@ const TYPE_META = {
     hint: "Paste a service account JSON key (IAM & Admin → Service Accounts → Keys → Add key → JSON) with Storage Object Admin access on the bucket.",
     showRegion: false,
     showEndpoint: false,
-    showPathStyle: false,
   },
   azure: {
     bucketLabel: "Container name",
@@ -1096,7 +1091,6 @@ const TYPE_META = {
     hint: "Uses the storage account's connection string (Access keys page → Connection string).",
     showRegion: false,
     showEndpoint: false,
-    showPathStyle: false,
   },
 };
 
@@ -1116,11 +1110,12 @@ function applyTypeToForm(type) {
   els.connServiceAccountJsonField.hidden = !meta.showServiceAccountJson;
   els.connServiceAccountJson.required = meta.showServiceAccountJson;
 
+  els.connEndpointField.hidden = !meta.showEndpoint;
+  els.connEndpoint.required = meta.showEndpoint;
+
   els.connTypeHint.textContent = meta.hint;
   els.connRegionField.hidden = !meta.showRegion;
-  els.connEndpointField.hidden = !meta.showEndpoint;
-  els.connPathStyleField.hidden = !meta.showPathStyle;
-  els.connAdvanced.hidden = !meta.showRegion && !meta.showEndpoint && !meta.showPathStyle;
+  els.connAdvanced.hidden = !meta.showRegion;
 }
 
 function openConnectionModal(conn) {
@@ -1141,7 +1136,6 @@ function openConnectionModal(conn) {
   els.connName.value = conn?.name && conn.name !== conn.bucket ? conn.name : "";
   els.connRegion.value = conn?.region || "";
   els.connEndpoint.value = conn?.endpoint || "";
-  els.connPathStyle.checked = !!conn?.pathStyle;
   els.connDeleteBtn.hidden = !conn;
   setFormStatus("");
   els.connectionModal.showModal();
@@ -1170,6 +1164,19 @@ function normalizePrefix(p) {
   return p;
 }
 
+// The endpoint field is a host, not a URL — tolerate a pasted
+// "https://host/path" since that's what provider dashboards show.
+function normalizeEndpoint(value) {
+  return value.trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
+}
+
+// S3-compatible services don't share AWS's region namespace and the region
+// is only ever a SigV4 scope string to them: R2 requires "auto", the rest
+// accept (or ignore) "us-east-1". Derived instead of asked.
+function regionForEndpoint(endpoint) {
+  return /\.r2\.cloudflarestorage\.com$/i.test(endpoint) ? "auto" : "us-east-1";
+}
+
 async function saveConnectionFromForm() {
   const type = els.connType.value;
   const bucket = els.connBucket.value.trim();
@@ -1186,14 +1193,15 @@ async function saveConnectionFromForm() {
     if (type === "s3-compat") {
       conn.accessKeyId = els.connAccessKey.value.trim();
       conn.secretAccessKey = els.connSecretKey.value.trim();
-      conn.endpoint = els.connEndpoint.value.trim();
-      conn.pathStyle = els.connPathStyle.checked;
+      conn.endpoint = normalizeEndpoint(els.connEndpoint.value);
+      // No path-style question: usesPathStyle() already forces it whenever
+      // an endpoint is set. No region question either — see regionForEndpoint().
+      conn.region = regionForEndpoint(conn.endpoint);
       const granted = await chrome.permissions.request({ origins: [`https://${conn.endpoint}/*`] });
       if (!granted) {
-        setFormStatus("Permission for the custom endpoint was not granted.", { error: true });
+        setFormStatus("Permission for that endpoint was not granted.", { error: true });
         return false;
       }
-      conn.region = els.connRegion.value.trim() || "us-east-1";
     } else if (type === "gcs") {
       // Service account JSON key — GCP's non-interactive credential, not
       // HMAC interop keys and not an OAuth sign-in flow.

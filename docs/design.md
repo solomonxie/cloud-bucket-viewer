@@ -122,9 +122,9 @@ so it gets its own field.
   serviceAccountJson,             // gcs only: the raw pasted JSON key, as a string
   prefix,            // optional, starting folder, default ""
   name,              // optional, defaults to bucket at save time
-  region,            // s3/s3-compat only, auto-detected for s3
-  endpoint,          // s3-compat only: user-set custom host
-  pathStyle,         // bool, s3/s3-compat only
+  region,            // s3/s3-compat only, never asked for: see below
+  endpoint,          // s3-compat only: the host the user typed
+  pathStyle,         // legacy/imported connections only, no longer asked for
 }
 ```
 
@@ -134,8 +134,24 @@ the real region in an `x-amz-bucket-region` response header even on an
 unauthenticated request — including on the 403 you get without credentials.
 `detectBucketRegion()` uses that instead of asking the user, firing on blur
 of the bucket field and again at save time if still empty. Falls back to
-`us-east-1` if detection fails. S3-compatible connections skip this — region
-is a manual field there. Azure and GCS have no region concept in this model.
+`us-east-1` if detection fails. It stays editable under Advanced, the only
+field left there.
+
+**S3-compatible** asks for exactly two things beyond the key pair: the
+endpoint host (a primary field, not tucked under Advanced — it's the one
+thing that defines the connection) and the bucket. Region and path-style are
+*not* asked:
+
+- Region is only a SigV4 scope string to these services, not a routing
+  decision — `regionForEndpoint()` derives it (`"auto"` for R2, which
+  requires that exact value; `"us-east-1"` otherwise, which the rest accept
+  or ignore).
+- Path-style is implied: `usesPathStyle()` is already true whenever an
+  endpoint is set, which is always, for this type.
+
+The endpoint is normalized to a bare host (`normalizeEndpoint()` strips a
+pasted `https://` and any path), since it's used both to build URLs and as
+the `chrome.permissions.request` origin pattern.
 
 **Azure Blob Storage**: the connection form takes one field, the storage
 account's connection string (`DefaultEndpointsProtocol=...;AccountName=...;

@@ -70,6 +70,10 @@
           </select>
         </label>
         <p id="connTypeHint" class="hint"></p>
+        <label class="field" id="connEndpointField">
+          <span>Endpoint</span>
+          <input id="connEndpoint" autocomplete="off" placeholder="e.g. abc123.r2.cloudflarestorage.com" />
+        </label>
         <label class="field">
           <span id="connBucketLabel">Bucket name</span>
           <input id="connBucket" required autocomplete="off" placeholder="my-bucket" />
@@ -102,13 +106,6 @@
           <label class="field" id="connRegionField">
             <span>Region</span>
             <input id="connRegion" placeholder="auto-detected from bucket" />
-          </label>
-          <label class="field" id="connEndpointField">
-            <span>Custom endpoint</span>
-            <input id="connEndpoint" placeholder="e.g. abc123.r2.cloudflarestorage.com" />
-          </label>
-          <label class="field checkbox" id="connPathStyleField">
-            <input type="checkbox" id="connPathStyle" /> <span>Use path-style URLs</span>
           </label>
         </details>
         <p class="hint">Keys are stored only in this browser (chrome.storage.local).</p>
