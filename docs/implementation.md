@@ -78,9 +78,10 @@ present, instead of dumping the raw XML — that string is what ends up in the
 status bar / form status via `withStatus()`/`setFormStatus()`.
 
 Virtual-hosted vs. path-style URLs: `usesPathStyle()` is true when
-`connection.pathStyle` is set or a custom `endpoint` is present (custom
-S3-compatible/GCS hosts need path style); otherwise AWS virtual-hosted
-`bucket.s3.region.amazonaws.com` is used.
+`connection.pathStyle` is set or an `endpoint` is present — which covers
+every `"s3-compat"` connection, so the form doesn't ask about path style at
+all; `pathStyle` now only ever comes from an older or imported connection.
+Otherwise AWS virtual-hosted `bucket.s3.region.amazonaws.com` is used.
 
 XML responses are parsed with `DOMParser` (only available in document
 contexts — this is why client calls happen from `sidepanel.js`, not
@@ -193,10 +194,10 @@ The `#connType` select drives everything else in the form: `TYPE_META` maps
 each type to its field labels and which fields apply —
 `showAccessKey`/`showSecretKey` (S3 shows both as key ID/secret; Azure shows
 only the secret field, relabeled "Connection string"; GCS shows neither),
-`showServiceAccountJson` (GCS only, a `<textarea>`), and the Advanced
-region/endpoint/path-style fields (S3/S3-compatible only). `applyTypeToForm()`
-applies that (labels, `hidden`, `required`) on open and on every `#connType`
-change.
+`showServiceAccountJson` (GCS only, a `<textarea>`), `showEndpoint`
+(S3-compatible only, a primary field), and `showRegion` (S3 only, the lone
+field left under Advanced). `applyTypeToForm()` applies that (labels,
+`hidden`, `required`) on open and on every `#connType` change.
 
 Save doesn't just persist the form — it proves the connection actually
 works first, with each step reflected in `#connFormStatus` (spinner icon +
@@ -206,7 +207,9 @@ bar uses):
 1. Type-specific setup, building `conn` from the raw form fields:
    - **s3**: detects region if blank (`detectBucketRegion()`, "Detecting
      region…").
-   - **s3-compat**: requests runtime permission for its custom endpoint.
+   - **s3-compat**: `normalizeEndpoint()` on the typed host,
+     `regionForEndpoint()` for the SigV4 scope, then requests runtime
+     permission for that endpoint.
    - **azure**: `parseConnectionString()` on `#connSecretKey`'s value (the
      connection string) → `accessKeyId`/`secretAccessKey`; a parse failure
      (missing `AccountName`/`AccountKey`) shows in the form and stops here.
