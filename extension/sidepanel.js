@@ -15,7 +15,6 @@ const $ = (id) => document.getElementById(id);
 
 const els = {
   connectionSelect: $("connectionSelect"),
-  connectionMenu: $("connectionMenu"),
   addConnBtn: $("addConnBtn"),
   manageBtn: $("manageBtn"),
   breadcrumb: $("breadcrumb"),
@@ -263,50 +262,30 @@ async function loadConnections() {
   await onConnectionChanged();
 }
 
-// Native <select> popups size/position themselves in ways that go wrong in
-// a narrow, tall side panel (oversized empty space above a couple of
-// items) — this is a plain button + absolutely-positioned list instead, so
-// it's fully in our control like the rest of the UI's custom dialogs.
+// A connection saved before "name" existed (or with a blank name typed in)
+// has nothing to show here — fall back to the bucket, then a placeholder,
+// so it's never an empty, unlabeled row.
+function connectionLabel(conn) {
+  return conn.name || conn.bucket || "(unnamed connection)";
+}
 
 function renderConnectionSelect() {
-  const active = activeConnection();
-  els.connectionSelect.disabled = state.connections.length === 0;
-  els.connectionSelect.innerHTML = active
-    ? `<span class="name">${escapeHtml(active.name)}</span>${icon("chevronDown")}`
-    : `<span class="name">No connections — click +</span>`;
-
-  els.connectionMenu.innerHTML = "";
-  for (const conn of state.connections) {
-    const li = document.createElement("li");
-    li.role = "option";
-    li.setAttribute("aria-selected", String(conn.id === state.activeId));
-    li.classList.toggle("active", conn.id === state.activeId);
-    li.innerHTML = `<span class="check">${conn.id === state.activeId ? icon("check") : ""}</span><span class="name">${escapeHtml(conn.name)}</span>`;
-    li.addEventListener("click", async () => {
-      closeConnectionMenu();
-      if (conn.id === state.activeId) return;
-      state.activeId = conn.id;
-      renderConnectionSelect();
-      await onConnectionChanged();
-    });
-    els.connectionMenu.appendChild(li);
+  els.connectionSelect.innerHTML = "";
+  if (state.connections.length === 0) {
+    const opt = document.createElement("option");
+    opt.textContent = "No connections — click +";
+    els.connectionSelect.appendChild(opt);
+    els.connectionSelect.disabled = true;
+    return;
   }
-}
-
-function openConnectionMenu() {
-  if (els.connectionSelect.disabled) return;
-  els.connectionMenu.hidden = false;
-  els.connectionSelect.setAttribute("aria-expanded", "true");
-}
-
-function closeConnectionMenu() {
-  els.connectionMenu.hidden = true;
-  els.connectionSelect.setAttribute("aria-expanded", "false");
-}
-
-function toggleConnectionMenu() {
-  if (els.connectionMenu.hidden) openConnectionMenu();
-  else closeConnectionMenu();
+  els.connectionSelect.disabled = false;
+  for (const conn of state.connections) {
+    const opt = document.createElement("option");
+    opt.value = conn.id;
+    opt.textContent = connectionLabel(conn);
+    opt.selected = conn.id === state.activeId;
+    els.connectionSelect.appendChild(opt);
+  }
 }
 
 async function onConnectionChanged() {
@@ -1151,7 +1130,7 @@ function renderManageList() {
     badge.innerHTML = icon("bucket");
     li.appendChild(badge);
 
-    const label = conn.name || conn.bucket || "(unnamed connection)";
+    const label = connectionLabel(conn);
     const name = document.createElement("span");
     name.className = "name";
     name.innerHTML =
@@ -1196,14 +1175,9 @@ function downloadTextFile(filename, text) {
 
 // --- Wiring ----------------------------------------------------------------
 
-els.connectionSelect.addEventListener("click", toggleConnectionMenu);
-document.addEventListener("click", (e) => {
-  if (!els.connectionMenu.hidden && !e.composedPath().includes(els.connectionSelect.parentElement)) {
-    closeConnectionMenu();
-  }
-});
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !els.connectionMenu.hidden) closeConnectionMenu();
+els.connectionSelect.addEventListener("change", async (e) => {
+  state.activeId = e.target.value;
+  await onConnectionChanged();
 });
 els.addConnBtn.addEventListener("click", () => openConnectionModal(null));
 els.connCancelBtn.addEventListener("click", () => els.connectionModal.close());
