@@ -2,12 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>S3 Bucket Viewer</title>
+    <title>Cloud Bucket Viewer</title>
     <link rel="stylesheet" href="sidepanel.css" />
   </head>
   <body>
     <header class="topbar">
-      <div class="brand" title="S3 Bucket Viewer">
+      <div class="brand" title="Cloud Bucket Viewer">
         <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
         </svg>
@@ -15,6 +15,9 @@
       <select id="connectionSelect" aria-label="Connection"></select>
       <button id="addConnBtn" class="icon-btn" title="Add connection" aria-label="Add connection"></button>
       <button id="manageBtn" class="icon-btn" title="Edit connection" aria-label="Edit connection"></button>
+      <button id="exportBtn" class="icon-btn" title="Export all connections" aria-label="Export all connections"></button>
+      <button id="importBtn" class="icon-btn" title="Import connections" aria-label="Import connections"></button>
+      <input type="file" id="importInput" accept="application/json" hidden />
     </header>
 
     <div class="toolbar">
@@ -58,15 +61,25 @@
         <h2 id="connectionModalTitle">Add connection</h2>
         <input type="hidden" id="connId" />
         <label class="field">
-          <span>Bucket name</span>
+          <span>Type</span>
+          <select id="connType">
+            <option value="s3">Amazon S3</option>
+            <option value="s3-compat">S3-compatible (R2, MinIO, …)</option>
+            <option value="azure">Azure Blob Storage</option>
+            <option value="gcs">Google Cloud Storage</option>
+          </select>
+        </label>
+        <p id="connTypeHint" class="hint"></p>
+        <label class="field">
+          <span id="connBucketLabel">Bucket name</span>
           <input id="connBucket" required autocomplete="off" placeholder="my-bucket" />
         </label>
         <label class="field">
-          <span>Access key ID</span>
+          <span id="connAccessKeyLabel">Access key ID</span>
           <input id="connAccessKey" required autocomplete="off" />
         </label>
         <label class="field">
-          <span>Secret access key</span>
+          <span id="connSecretKeyLabel">Secret access key</span>
           <span class="input-with-action">
             <input id="connSecretKey" type="password" required autocomplete="off" />
             <button type="button" id="toggleSecretBtn" class="icon-btn ghost" title="Show/hide" aria-label="Show or hide secret key"></button>
@@ -80,17 +93,17 @@
           <span>Name <em>(optional, defaults to bucket name)</em></span>
           <input id="connName" placeholder="e.g. Personal, Work" />
         </label>
-        <details class="advanced">
-          <summary>Advanced (region auto-detected)</summary>
-          <label class="field">
+        <details class="advanced" id="connAdvanced">
+          <summary>Advanced</summary>
+          <label class="field" id="connRegionField">
             <span>Region</span>
             <input id="connRegion" placeholder="auto-detected from bucket" />
           </label>
-          <label class="field">
-            <span>Custom endpoint <em>(optional, for S3-compatible services)</em></span>
+          <label class="field" id="connEndpointField">
+            <span>Custom endpoint</span>
             <input id="connEndpoint" placeholder="e.g. abc123.r2.cloudflarestorage.com" />
           </label>
-          <label class="field checkbox">
+          <label class="field checkbox" id="connPathStyleField">
             <input type="checkbox" id="connPathStyle" /> <span>Use path-style URLs</span>
           </label>
         </details>
@@ -110,9 +123,6 @@
       <h2>Manage connections</h2>
       <ul id="manageList" class="manage-list"></ul>
       <div class="modal-actions">
-        <button id="importBtn" class="btn">Import</button>
-        <button id="exportBtn" class="btn">Export</button>
-        <input type="file" id="importInput" accept="application/json" hidden />
         <span class="spacer"></span>
         <button id="manageCloseBtn" class="btn primary">Close</button>
       </div>
@@ -151,7 +161,7 @@
     <dialog id="shareModal" class="alert-dialog share-dialog">
       <h2 id="shareModalTitle">Share</h2>
       <div class="share-row">
-        <span>s3:// URI</span>
+        <span id="shareUriLabel">s3:// URI</span>
         <div class="share-value">
           <input id="shareS3Uri" readonly />
           <button type="button" id="copyS3UriBtn" class="icon-btn" title="Copy" aria-label="Copy s3:// URI"></button>

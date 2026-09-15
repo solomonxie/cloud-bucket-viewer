@@ -1,4 +1,6 @@
-import { S3Client, formatSize, detectBucketRegion } from "./lib/s3-client.js";
+import { detectBucketRegion } from "./lib/s3-client.js";
+import { formatSize } from "./lib/format.js";
+import { createClient } from "./lib/client.js";
 import {
   getConnections,
   upsertConnection,
@@ -43,13 +45,22 @@ const els = {
   connectionForm: $("connectionForm"),
   connectionModalTitle: $("connectionModalTitle"),
   connId: $("connId"),
+  connType: $("connType"),
+  connTypeHint: $("connTypeHint"),
+  connBucketLabel: $("connBucketLabel"),
   connBucket: $("connBucket"),
+  connAccessKeyLabel: $("connAccessKeyLabel"),
   connAccessKey: $("connAccessKey"),
+  connSecretKeyLabel: $("connSecretKeyLabel"),
   connSecretKey: $("connSecretKey"),
   connPrefix: $("connPrefix"),
   connName: $("connName"),
+  connAdvanced: $("connAdvanced"),
+  connRegionField: $("connRegionField"),
   connRegion: $("connRegion"),
+  connEndpointField: $("connEndpointField"),
   connEndpoint: $("connEndpoint"),
+  connPathStyleField: $("connPathStyleField"),
   connPathStyle: $("connPathStyle"),
   connDeleteBtn: $("connDeleteBtn"),
   connCancelBtn: $("connCancelBtn"),
@@ -77,6 +88,7 @@ const els = {
   promptCancelBtn: $("promptCancelBtn"),
   shareModal: $("shareModal"),
   shareModalTitle: $("shareModalTitle"),
+  shareUriLabel: $("shareUriLabel"),
   shareS3Uri: $("shareS3Uri"),
   copyS3UriBtn: $("copyS3UriBtn"),
   shareHttpUrl: $("shareHttpUrl"),
@@ -117,6 +129,8 @@ const state = {
 // Static icon-only controls: filled in once so sidepanel.html stays markup-only.
 els.addConnBtn.innerHTML = icon("plus");
 els.manageBtn.innerHTML = icon("settings");
+els.exportBtn.innerHTML = icon("share");
+els.importBtn.innerHTML = icon("import");
 els.refreshBtn.innerHTML = icon("refresh");
 els.pasteBtn.innerHTML = icon("clipboard");
 els.clipboardIcon.innerHTML = icon("clipboard");
@@ -290,7 +304,7 @@ function renderConnectionSelect() {
 
 async function onConnectionChanged() {
   const conn = activeConnection();
-  state.client = conn ? new S3Client(conn) : null;
+  state.client = conn ? createClient(conn) : null;
   state.bucket = conn?.bucket || null;
   state.prefix = conn?.prefix || "";
   state.token = null;
@@ -934,7 +948,8 @@ async function closeDetailModal() {
 function openShareMenu(key, name) {
   els.shareModalTitle.textContent = `Share "${name}"`;
   els.shareModal.dataset.key = key;
-  els.shareS3Uri.value = state.client.s3Uri(state.bucket, key);
+  els.shareUriLabel.textContent = `${state.client.scheme}:// URI`;
+  els.shareS3Uri.value = state.client.resourceUri(state.bucket, key);
   els.shareHttpUrl.value = state.client.unsignedUrl(state.bucket, key);
   els.shareSignedUrl.value = "";
   els.shareModal.showModal();
@@ -1022,9 +1037,70 @@ els.fileList.addEventListener("drop", async (e) => {
 
 // --- Connection modal ----------------------------------------------------------
 
+// Every type stores into the same fields (bucket/accessKeyId/secretAccessKey)
+// so store.js and the rest of the app stay type-agnostic — only the labels
+// and which Advanced fields apply change per type. See docs/design.md.
+const TYPE_META = {
+  s3: {
+    bucketLabel: "Bucket name",
+    bucketPlaceholder: "my-bucket",
+    keyLabel: "Access key ID",
+    secretLabel: "Secret access key",
+    hint: "AWS S3. Region is auto-detected from the bucket.",
+    showRegion: true,
+    showEndpoint: false,
+    showPathStyle: false,
+  },
+  "s3-compat": {
+    bucketLabel: "Bucket name",
+    bucketPlaceholder: "my-bucket",
+    keyLabel: "Access key ID",
+    secretLabel: "Secret access key",
+    hint: "Any S3-compatible service — Cloudflare R2, MinIO, etc. Needs a custom endpoint below.",
+    showRegion: true,
+    showEndpoint: true,
+    showPathStyle: true,
+  },
+  gcs: {
+    bucketLabel: "Bucket name",
+    bucketPlaceholder: "my-bucket",
+    keyLabel: "HMAC access key",
+    secretLabel: "HMAC secret",
+    hint: "Uses a Cloud Storage HMAC key pair (Settings → Interoperability in the GCS console).",
+    showRegion: false,
+    showEndpoint: false,
+    showPathStyle: false,
+  },
+  azure: {
+    bucketLabel: "Container name",
+    bucketPlaceholder: "my-container",
+    keyLabel: "Storage account name",
+    secretLabel: "Account key",
+    hint: "Uses a Shared Key from the storage account's Access keys page.",
+    showRegion: false,
+    showEndpoint: false,
+    showPathStyle: false,
+  },
+};
+
+function applyTypeToForm(type) {
+  const meta = TYPE_META[type] || TYPE_META.s3;
+  els.connBucketLabel.textContent = meta.bucketLabel;
+  els.connBucket.placeholder = meta.bucketPlaceholder;
+  els.connAccessKeyLabel.textContent = meta.keyLabel;
+  els.connSecretKeyLabel.textContent = meta.secretLabel;
+  els.connTypeHint.textContent = meta.hint;
+  els.connRegionField.hidden = !meta.showRegion;
+  els.connEndpointField.hidden = !meta.showEndpoint;
+  els.connPathStyleField.hidden = !meta.showPathStyle;
+  els.connAdvanced.hidden = !meta.showRegion && !meta.showEndpoint && !meta.showPathStyle;
+}
+
 function openConnectionModal(conn) {
   els.connectionModalTitle.textContent = conn ? "Edit connection" : "Add connection";
   els.connId.value = conn?.id || "";
+  els.connType.value = conn?.type || "s3";
+  applyTypeToForm(els.connType.value);
   els.connBucket.value = conn?.bucket || "";
   els.connAccessKey.value = conn?.accessKeyId || "";
   els.connSecretKey.value = conn?.secretAccessKey || "";
@@ -1040,10 +1116,14 @@ function openConnectionModal(conn) {
   els.connectionModal.showModal();
 }
 
+els.connType.addEventListener("change", () => applyTypeToForm(els.connType.value));
+
 // Bucket names don't encode a region, but the field is still enough to look
 // one up (see detectBucketRegion) — do it as soon as the user leaves the
-// field so Advanced/Region is already filled in if they open it.
+// field so Advanced/Region is already filled in if they open it. Only AWS S3
+// has a region to detect.
 els.connBucket.addEventListener("blur", async () => {
+  if (els.connType.value !== "s3") return;
   const bucket = els.connBucket.value.trim();
   if (!bucket || els.connRegion.value.trim()) return;
   els.connRegion.placeholder = "detecting…";
@@ -1060,39 +1140,49 @@ function normalizePrefix(p) {
 }
 
 async function saveConnectionFromForm() {
-  const endpoint = els.connEndpoint.value.trim();
-  if (endpoint) {
-    const granted = await chrome.permissions.request({ origins: [`https://${endpoint}/*`] });
-    if (!granted) {
-      setFormStatus("Permission for the custom endpoint was not granted.", { error: true });
-      return false;
-    }
-  }
-
+  const type = els.connType.value;
   const bucket = els.connBucket.value.trim();
-  let region = els.connRegion.value.trim();
   const conn = {
     id: els.connId.value || newConnectionId(),
+    type,
     bucket,
     name: els.connName.value.trim() || bucket,
     accessKeyId: els.connAccessKey.value.trim(),
     secretAccessKey: els.connSecretKey.value.trim(),
     prefix: normalizePrefix(els.connPrefix.value.trim()),
-    endpoint,
-    pathStyle: els.connPathStyle.checked,
   };
 
   els.connSaveBtn.disabled = true;
   try {
-    if (!region && !endpoint) {
-      setFormStatus("Detecting region…", { loading: true });
-      region = (await detectBucketRegion(bucket)) || "us-east-1";
+    if (type === "s3-compat") {
+      conn.endpoint = els.connEndpoint.value.trim();
+      conn.pathStyle = els.connPathStyle.checked;
+      const granted = await chrome.permissions.request({ origins: [`https://${conn.endpoint}/*`] });
+      if (!granted) {
+        setFormStatus("Permission for the custom endpoint was not granted.", { error: true });
+        return false;
+      }
+      conn.region = els.connRegion.value.trim() || "us-east-1";
+    } else if (type === "gcs") {
+      // Google's XML API accepts AWS SigV4 requests signed with HMAC keys —
+      // same wire protocol as S3, fixed endpoint, no region concept.
+      conn.endpoint = "storage.googleapis.com";
+      conn.pathStyle = true;
+      conn.region = "auto";
+    } else if (type === "azure") {
+      // Host is derived from the account name (accessKeyId) — see AzureClient.
+    } else {
+      let region = els.connRegion.value.trim();
+      if (!region) {
+        setFormStatus("Detecting region…", { loading: true });
+        region = (await detectBucketRegion(bucket)) || "us-east-1";
+      }
+      conn.region = region;
     }
-    conn.region = region || "us-east-1";
 
     setFormStatus("Checking bucket access…", { loading: true });
     try {
-      await new S3Client(conn).listObjects(conn.bucket, conn.prefix, undefined);
+      await createClient(conn).listObjects(conn.bucket, conn.prefix, undefined);
     } catch (err) {
       setFormStatus(`Couldn't access that bucket: ${err.message}`, { error: true });
       return false;
@@ -1211,7 +1301,7 @@ els.connManageAllBtn.addEventListener("click", () => {
 els.manageBtn.addEventListener("click", () => openConnectionModal(activeConnection()));
 els.manageCloseBtn.addEventListener("click", () => els.manageModal.close());
 els.exportBtn.addEventListener("click", () => {
-  downloadTextFile("s3-viewer-connections.json", exportConnections(state.connections));
+  downloadTextFile("cloud-bucket-viewer-connections.json", exportConnections(state.connections));
 });
 els.importBtn.addEventListener("click", () => els.importInput.click());
 els.importInput.addEventListener("change", async () => {
