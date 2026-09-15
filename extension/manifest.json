@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "S3 Bucket Viewer",
-  "version": "0.1.0",
-  "description": "Browse, upload, copy, move and delete S3 objects from a Chrome side panel. Credentials stay local.",
+  "version": "0.2.0",
+  "description": "Browse, preview, edit and manage S3 objects from a Chrome side panel. Credentials stay local.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
