@@ -602,9 +602,15 @@ function makeRow({ badgeIcon, badgeClass, name, meta, onOpen, actions, itemKey, 
     row.appendChild(cb);
   }
 
-  const badge = document.createElement("span");
+  const badgeClickable = !selectable && onOpen;
+  const badge = document.createElement(badgeClickable ? "button" : "span");
   badge.className = badgeClass ? `badge ${badgeClass}` : "badge";
   badge.innerHTML = icon(badgeIcon);
+  if (badgeClickable) {
+    badge.type = "button";
+    badge.title = name;
+    badge.addEventListener("click", onOpen);
+  }
   row.appendChild(badge);
 
   if (selectable) {
