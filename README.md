@@ -55,7 +55,7 @@ for GCS). See [docs/design.md](docs/design.md) and
 ```sh
 make lint    # syntax-check every .js file + manifest.json
 make zip     # build dist/cloud-bucket-viewer.zip
-make icons   # regenerate extension/icons/*.png
+make icons   # regenerate extension/icons/icon*.png from icon.svg (needs Chrome)
 make assets  # regenerate docs/store/*.png (needs Chrome)
 make clean   # remove dist/
 ```
