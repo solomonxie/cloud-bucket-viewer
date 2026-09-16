@@ -2,12 +2,13 @@ EXT_DIR := extension
 DIST_DIR := dist
 ZIP := $(DIST_DIR)/cloud-bucket-viewer.zip
 
-.PHONY: help zip clean lint icons
+.PHONY: help zip clean lint icons assets
 
 help:
 	@echo "make zip    - build $(ZIP) for loading into Chrome"
 	@echo "make lint   - syntax-check all extension .js files"
 	@echo "make icons  - regenerate extension/icons/*.png"
+	@echo "make assets - regenerate docs/store/*.png listing art"
 	@echo "make clean  - remove build output"
 
 zip: lint
@@ -27,6 +28,9 @@ lint:
 
 icons:
 	python3 scripts/gen_icons.py
+
+assets:
+	python3 scripts/gen_store_assets.py
 
 clean:
 	rm -rf $(DIST_DIR)
