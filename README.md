@@ -53,17 +53,21 @@ for GCS). See [docs/design.md](docs/design.md) and
 ## Development
 
 ```sh
-make lint   # syntax-check every .js file + manifest.json
-make zip    # build dist/cloud-bucket-viewer.zip
-make icons  # regenerate extension/icons/*.png
-make clean  # remove dist/
+make lint    # syntax-check every .js file + manifest.json
+make zip     # build dist/cloud-bucket-viewer.zip
+make icons   # regenerate extension/icons/*.png
+make assets  # regenerate docs/store/*.png (needs Chrome)
+make clean   # remove dist/
 ```
 
 No dependencies to install — everything runs on the system's `node`,
 `python3` and `zip`.
 
-`docs/store/` — Chrome Web Store listing assets: screenshots (1280x800)
-and small promo tile (440x280).
+`docs/store/` — Chrome Web Store listing assets, all rebuilt by `make assets`
+from the real side panel CSS via headless Chrome: screenshots (1280x800),
+promo tile (440x280), marquee (1400x560), and
+[LISTING.md](docs/store/LISTING.md) with every dashboard field ready to paste.
+Privacy policy: [PRIVACY.md](PRIVACY.md).
 
 ## Security note
 
@@ -76,10 +80,8 @@ can read that object until it expires, with no further authentication.
 
 ## Screenshots
 
-**File browser**
+<img src="docs/store/1-file-browser.png" alt="File browser" width="420">
 
-<img src="docs/screenshots/file-browser.png" alt="File browser" width="200">
+<img src="docs/store/2-preview.png" alt="Preview and edit" width="420">
 
-**Object preview**
-
-<img src="docs/screenshots/preview.png" alt="Object preview" width="200">
+<img src="docs/store/3-providers.png" alt="Adding a connection" width="420">
