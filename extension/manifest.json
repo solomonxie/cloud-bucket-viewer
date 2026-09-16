@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Cloud Bucket Viewer",
   "version": "0.3.0",
-  "description": "Browse, preview, edit and manage objects in S3, S3-compatible, Azure Blob and Google Cloud Storage from a Chrome side panel. Credentials stay local.",
+  "description": "Browse, preview and edit S3, S3-compatible, Azure Blob and Google Cloud Storage buckets from a Chrome side panel. Keys stay local.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
