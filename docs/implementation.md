@@ -24,7 +24,7 @@ on it.
 | `extension/lib/icons.js` | inline-SVG icon set (`icon()`) + `iconForFileName()` by extension |
 | `extension/lib/preview.js` | `previewKind()`, `isTooLargeForTextPreview()`, `mimeForName()` |
 | `extension/lib/markdown.js` | `renderMarkdown()` — dependency-free Markdown → HTML |
-| `scripts/gen_icons.py` | regenerates `extension/icons/*.png` (stdlib only, no Pillow) |
+| `scripts/gen_icons.py` | rasterizes `extension/icons/icon.svg` into `icon{16,32,48,128}.png` via headless Chrome |
 
 ## SigV4 signer (`lib/sigv4.js`)
 
