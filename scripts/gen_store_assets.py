@@ -23,18 +23,10 @@ CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 ACCENT_DARK = "#b5620a"
 ACCENT_LIGHT = "#f0a848"
 
-# Glyph geometry mirrors scripts/gen_icons.py, as SVG so it stays crisp.
-GLYPH = """
-<svg class="glyph" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-  <g fill="#fff">
-    <circle cx="6.7" cy="4.0" r="2.0"/><circle cx="9.0" cy="3.2" r="2.3"/>
-    <circle cx="11.1" cy="4.1" r="1.7"/>
-    <rect x="4.6" y="4.0" width="7.8" height="1.3"/>
-    <polygon points="4.00,6.80 12.00,6.80 11.90,7.30 4.10,7.30"/>
-    <polygon points="4.21,7.90 11.79,7.90 10.70,13.60 5.30,13.60"/>
-  </g>
-</svg>
-"""
+# The mark is the same vector source the extension icons are built from.
+GLYPH = (EXT / "icons" / "icon.svg").read_text().replace(
+    "<svg ", '<svg class="glyph" ', 1
+)
 
 # Dark tokens pinned unconditionally: headless Chrome reports a light OS
 # theme, so the media query in sidepanel.css would never fire.
@@ -293,7 +285,8 @@ body {{ margin: 0; width: {width}px; height: {height}px; overflow: hidden;
   display: flex; flex-direction: column; align-items: center;
   justify-content: center; gap: {gap}px; color: #fff; text-align: center; }}
 .glyph {{ width: {glyph_size}px; height: {glyph_size}px;
-  background: rgba(0,0,0,.18); border-radius: {glyph_size // 5}px; padding: {glyph_size // 8}px; }}
+  background: #fff; border-radius: {glyph_size // 4}px; padding: {glyph_size // 9}px;
+  box-shadow: 0 {glyph_size // 20}px {glyph_size // 6}px rgba(0,0,0,.18); }}
 h1 {{ margin: 0; font-size: {title_size}px; font-weight: 700; letter-spacing: -0.5px; }}
 p {{ margin: 0; font-size: {sub_size}px; color: rgba(255,255,255,.88); }}
 </style></head><body>
