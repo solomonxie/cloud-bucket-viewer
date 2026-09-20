@@ -1092,6 +1092,36 @@ const TYPE_META = {
     showRegion: false,
     showEndpoint: false,
   },
+  "tencent-cos": {
+    bucketLabel: "Bucket name",
+    bucketPlaceholder: "my-bucket-1250000000",
+    showAccessKey: true,
+    keyLabel: "SecretId",
+    showSecretKey: true,
+    secretLabel: "SecretKey",
+    showServiceAccountJson: false,
+    hint: "Tencent Cloud COS, via its S3-compatible endpoint. Bucket name includes the APPID suffix shown in the console. Region is required.",
+    showRegion: true,
+    regionRequired: true,
+    regionPlaceholder: "e.g. ap-guangzhou",
+    regionListId: "tencentCosRegions",
+    showEndpoint: false,
+  },
+  "alibaba-oss": {
+    bucketLabel: "Bucket name",
+    bucketPlaceholder: "my-bucket",
+    showAccessKey: true,
+    keyLabel: "AccessKey ID",
+    showSecretKey: true,
+    secretLabel: "AccessKey secret",
+    showServiceAccountJson: false,
+    hint: "Alibaba Cloud OSS, via its S3-compatible endpoint. Region is required.",
+    showRegion: true,
+    regionRequired: true,
+    regionPlaceholder: "e.g. cn-hangzhou",
+    regionListId: "alibabaOssRegions",
+    showEndpoint: false,
+  },
 };
 
 function applyTypeToForm(type) {
@@ -1116,6 +1146,13 @@ function applyTypeToForm(type) {
   els.connTypeHint.textContent = meta.hint;
   els.connRegionField.hidden = !meta.showRegion;
   els.connAdvanced.hidden = !meta.showRegion;
+  els.connRegion.required = !!meta.regionRequired;
+  els.connRegion.placeholder = meta.regionPlaceholder || "auto-detected from bucket";
+  if (meta.regionListId) els.connRegion.setAttribute("list", meta.regionListId);
+  else els.connRegion.removeAttribute("list");
+  // Region isn't optional for these two — don't bury it in a collapsed
+  // "Advanced" section the way S3's auto-detected one is.
+  els.connAdvanced.open = !!meta.regionRequired;
 }
 
 function openConnectionModal(conn) {
@@ -1229,6 +1266,18 @@ async function saveConnectionFromForm() {
         setFormStatus(err.message, { error: true });
         return false;
       }
+    } else if (type === "tencent-cos" || type === "alibaba-oss") {
+      // Same S3 dialect as "s3"/"s3-compat" (S3Client picks the right host
+      // for the type), but neither COS nor OSS exposes AWS's region-sniffing
+      // global endpoint, so the region has to be typed, not detected.
+      conn.accessKeyId = els.connAccessKey.value.trim();
+      conn.secretAccessKey = els.connSecretKey.value.trim();
+      const region = els.connRegion.value.trim();
+      if (!region) {
+        setFormStatus("Region is required for this provider.", { error: true });
+        return false;
+      }
+      conn.region = region;
     } else {
       conn.accessKeyId = els.connAccessKey.value.trim();
       conn.secretAccessKey = els.connSecretKey.value.trim();

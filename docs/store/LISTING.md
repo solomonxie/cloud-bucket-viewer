@@ -22,11 +22,11 @@ Manifest version is `0.3.0`. Every resubmission needs a higher number, so bump
 Cloud Bucket Viewer
 ```
 
-**Summary** (130/132 chars — same text as the manifest `description`, which
+**Summary** (125/132 chars — same text as the manifest `description`, which
 the dashboard pre-fills this field from; both share the 132-char cap)
 
 ```
-Browse, preview and edit S3, S3-compatible, Azure Blob and Google Cloud Storage buckets from a Chrome side panel. Keys stay local.
+Browse, preview and edit S3, S3-compatible, Azure, GCS, Tencent COS or Alibaba OSS from a Chrome side panel. Keys stay local.
 ```
 
 **Description**
@@ -34,11 +34,13 @@ Browse, preview and edit S3, S3-compatible, Azure Blob and Google Cloud Storage 
 ```
 Cloud Bucket Viewer turns Chrome's side panel into a file explorer for your object storage. It sits next to whatever tab you're working in, so you can check a bucket without leaving the page.
 
-Works with four kinds of storage:
+Works with six kinds of storage:
 • Amazon S3
 • S3-compatible endpoints — Cloudflare R2, MinIO, Wasabi, Backblaze B2 and anything else that speaks the S3 API
 • Azure Blob Storage
 • Google Cloud Storage
+• Tencent Cloud COS
+• Alibaba Cloud OSS
 
 WHAT YOU CAN DO
 • Browse folders and files with breadcrumb navigation and pagination
@@ -47,19 +49,19 @@ WHAT YOU CAN DO
 • Copy, cut and paste files and folders, clipboard-style, with multi-select for bulk operations
 • Upload by picking a file or dragging one into the current folder
 • Download files, create folders, recursively delete folders
-• Share an object as a provider URI (s3://, az://, gs://), a plain HTTPS link, or a signed link with a configurable expiry
+• Share an object as a provider URI (s3://, az://, gs://, cos://, oss://), a plain HTTPS link, or a signed link with a configurable expiry
 
 CONNECTIONS
-Add as many named connections as you like and switch between them from the toolbar. Each one is scoped to a single bucket or container, so you land straight where you work. Adding a connection needs only a bucket name and a credential — the region is auto-detected, the display name defaults to the bucket name, and a starting key prefix is optional. Saving validates the connection against the provider first and shows the progress inline, so a typo fails immediately instead of halfway through a session.
+Add as many named connections as you like and switch between them from the toolbar. Each one is scoped to a single bucket or container, so you land straight where you work. Adding a connection needs only a bucket name and a credential — for S3, region is auto-detected; for Tencent COS and Alibaba OSS you pick it from the provider's own region list; the display name defaults to the bucket name, and a starting key prefix is optional. Saving validates the connection against the provider first and shows the progress inline, so a typo fails immediately instead of halfway through a session.
 
-No interactive sign-in anywhere: S3 and S3-compatible take an access key pair, Azure takes a storage account connection string, Google Cloud Storage takes a service account JSON key.
+No interactive sign-in anywhere: S3, S3-compatible, Tencent COS and Alibaba OSS take an access key pair, Azure takes a storage account connection string, Google Cloud Storage takes a service account JSON key.
 
 YOUR CREDENTIALS STAY ON YOUR MACHINE
 There is no backend server, no analytics and no third-party code. Credentials live in chrome.storage.local on the device where you entered them — never chrome.storage.sync, so they are not copied to your Google account or to your other devices. They are used only to sign requests to the endpoint that the connection itself names. Requests go straight from your browser to your storage provider.
 
 You can export all connections to a JSON file and import them elsewhere. That file contains your secrets in plaintext, so handle it like any other credential file.
 
-Open source, MIT licensed, no build step and no cloud SDKs — request signing is plain JavaScript (SigV4 for S3, Shared Key for Azure, service-account JWT plus GOOG4-RSA-SHA256 for Google Cloud Storage), so you can read every line that touches a key.
+Open source, MIT licensed, no build step and no cloud SDKs — request signing is plain JavaScript (SigV4 for S3/S3-compatible/Tencent COS/Alibaba OSS, Shared Key for Azure, service-account JWT plus GOOG4-RSA-SHA256 for Google Cloud Storage), so you can read every line that touches a key.
 
 Source and issues: https://github.com/solomonxie/cloud-bucket-viewer
 ```
@@ -140,7 +142,7 @@ Used by the Download action to save an object from a bucket to the user's comput
 **Host permission justification**
 
 ```
-The extension signs and sends storage API requests directly from the browser to the provider the user connected to. amazonaws.com covers Amazon S3, r2.cloudflarestorage.com covers Cloudflare R2, storage.googleapis.com covers Google Cloud Storage, blob.core.windows.net covers Azure Blob Storage, and oauth2.googleapis.com is required to exchange a Google service account key for an access token. The optional https://*/* permission is never granted up front: it is requested at runtime, narrowed to the one host the user typed, when they add a self-hosted or third-party S3-compatible endpoint such as MinIO or Wasabi, and Chrome shows its own prompt for that host.
+The extension signs and sends storage API requests directly from the browser to the provider the user connected to. amazonaws.com covers Amazon S3, r2.cloudflarestorage.com covers Cloudflare R2, storage.googleapis.com covers Google Cloud Storage, blob.core.windows.net covers Azure Blob Storage, myqcloud.com covers Tencent Cloud COS, aliyuncs.com covers Alibaba Cloud OSS, and oauth2.googleapis.com is required to exchange a Google service account key for an access token. The optional https://*/* permission is never granted up front: it is requested at runtime, narrowed to the one host the user typed, when they add a self-hosted or third-party S3-compatible endpoint such as MinIO or Wasabi, and Chrome shows its own prompt for that host.
 ```
 
 **Are you using remote code?**

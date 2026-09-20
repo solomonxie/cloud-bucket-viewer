@@ -49,6 +49,11 @@ export class S3Client {
   host() {
     if (this.conn.endpoint) return this.conn.endpoint;
     const region = this.conn.region || "us-east-1";
+    // Tencent COS and Alibaba OSS speak the same S3 dialect through their own
+    // documented S3-compatible endpoints, virtual-hosted style (bucket goes
+    // in the subdomain via urlFor, same as AWS) — just a different host.
+    if (this.conn.type === "tencent-cos") return `cos.${region}.myqcloud.com`;
+    if (this.conn.type === "alibaba-oss") return `s3.oss-${region}.aliyuncs.com`;
     return `s3.${region}.amazonaws.com`;
   }
 
@@ -178,13 +183,15 @@ export class S3Client {
   }
 
   get scheme() {
+    if (this.conn.type === "tencent-cos") return "cos";
+    if (this.conn.type === "alibaba-oss") return "oss";
     return "s3";
   }
 
-  // Share links: an s3:// URI, an unsigned HTTP URL (only useful on a public
+  // Share links: a provider URI, an unsigned HTTP URL (only useful on a public
   // bucket/object), and a time-limited SigV4-presigned URL.
   resourceUri(bucket, key) {
-    return `s3://${bucket}/${key}`;
+    return `${this.scheme}://${bucket}/${key}`;
   }
 
   unsignedUrl(bucket, key) {

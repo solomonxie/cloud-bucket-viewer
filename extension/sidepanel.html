@@ -67,6 +67,8 @@
             <option value="s3-compat">S3-compatible (R2, MinIO, …)</option>
             <option value="azure">Azure Blob Storage</option>
             <option value="gcs">Google Cloud Storage</option>
+            <option value="tencent-cos">Tencent Cloud COS</option>
+            <option value="alibaba-oss">Alibaba Cloud OSS</option>
           </select>
         </label>
         <p id="connTypeHint" class="hint"></p>
@@ -108,6 +110,56 @@
             <input id="connRegion" placeholder="auto-detected from bucket" />
           </label>
         </details>
+        <datalist id="tencentCosRegions">
+          <option value="ap-beijing"></option>
+          <option value="ap-nanjing"></option>
+          <option value="ap-shanghai"></option>
+          <option value="ap-guangzhou"></option>
+          <option value="ap-chengdu"></option>
+          <option value="ap-chongqing"></option>
+          <option value="ap-hongkong"></option>
+          <option value="ap-singapore"></option>
+          <option value="ap-jakarta"></option>
+          <option value="ap-seoul"></option>
+          <option value="ap-tokyo"></option>
+          <option value="ap-bangkok"></option>
+          <option value="ap-mumbai"></option>
+          <option value="na-siliconvalley"></option>
+          <option value="na-ashburn"></option>
+          <option value="na-toronto"></option>
+          <option value="sa-saopaulo"></option>
+          <option value="eu-frankfurt"></option>
+        </datalist>
+        <datalist id="alibabaOssRegions">
+          <option value="cn-hangzhou"></option>
+          <option value="cn-shanghai"></option>
+          <option value="cn-nanjing"></option>
+          <option value="cn-fuzhou"></option>
+          <option value="cn-qingdao"></option>
+          <option value="cn-beijing"></option>
+          <option value="cn-zhangjiakou"></option>
+          <option value="cn-huhehaote"></option>
+          <option value="cn-wulanchabu"></option>
+          <option value="cn-shenzhen"></option>
+          <option value="cn-heyuan"></option>
+          <option value="cn-guangzhou"></option>
+          <option value="cn-chengdu"></option>
+          <option value="cn-hongkong"></option>
+          <option value="us-west-1"></option>
+          <option value="us-east-1"></option>
+          <option value="ap-northeast-1"></option>
+          <option value="ap-northeast-2"></option>
+          <option value="ap-southeast-1"></option>
+          <option value="ap-southeast-2"></option>
+          <option value="ap-southeast-3"></option>
+          <option value="ap-southeast-5"></option>
+          <option value="ap-southeast-6"></option>
+          <option value="ap-southeast-7"></option>
+          <option value="ap-south-1"></option>
+          <option value="eu-central-1"></option>
+          <option value="eu-west-1"></option>
+          <option value="me-east-1"></option>
+        </datalist>
         <p class="hint">Keys are stored only in this browser (chrome.storage.local).</p>
         <button type="button" id="connManageAllBtn" class="link-btn">Manage all connections…</button>
         <div id="connFormStatus" class="status" hidden></div>
