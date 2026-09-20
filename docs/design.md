@@ -1,5 +1,8 @@
 # Design
 
+**Every surface is drawn in `uiux/`.** This file carries the problem,
+the options and the architecture; the drawings carry the interface.
+
 ## Problem
 
 Browsing cloud storage today means each provider's own console (slow,
@@ -15,9 +18,11 @@ tab — regardless of which provider the bucket lives on.
   starting prefix), switchable. Adding one only strictly requires a type,
   bucket/container name and key pair — region (where applicable) is
   auto-detected, name defaults to the bucket name.
-- Four connection types: Amazon S3, S3-compatible (custom endpoint), Azure
+- Six connection types: Amazon S3, S3-compatible (custom endpoint), Azure
   Blob Storage (connection string), Google Cloud Storage (service account
-  JSON key) — no interactive OAuth/browser sign-in for any of them.
+  JSON key), Tencent Cloud COS and Alibaba Cloud OSS (both via their own
+  S3-compatible endpoints, key pair + region) — no interactive OAuth/browser
+  sign-in for any of them.
 - Keys stored locally only; exportable/importable as JSON.
 - Browse folders → files under that bucket (prefix/delimiter navigation).
 - File ops: download, copy, cut/move, paste, delete, multi-select bulk
@@ -82,6 +87,7 @@ extension/
   background.js         opens the side panel on the toolbar icon click
   sidepanel.html/.css/.js   the whole UI (vanilla JS, no framework)
   lib/client.js           picks S3Client/AzureClient/GcsClient for a connection's type
+                          (S3Client also covers S3-compatible, Tencent COS, Alibaba OSS)
   lib/sigv4.js            AWS SigV4 request signing (SubtleCrypto) + presigning
   lib/s3-client.js         S3-dialect REST ops (S3, S3-compatible), XML parsing
   lib/azure-sig.js         Azure Shared Key signing + Service SAS presigning
@@ -116,13 +122,13 @@ so it gets its own field.
 // one entry in chrome.storage.local["connections"]
 {
   id,
-  type,              // "s3" | "s3-compat" | "azure" | "gcs"
+  type,              // "s3" | "s3-compat" | "azure" | "gcs" | "tencent-cos" | "alibaba-oss"
   bucket,            // required (container name, for azure)
-  accessKeyId, secretAccessKey,  // s3/s3-compat: key pair; azure: account name/key
+  accessKeyId, secretAccessKey,  // s3/s3-compat/cos/oss: key pair; azure: account name/key
   serviceAccountJson,             // gcs only: the raw pasted JSON key, as a string
   prefix,            // optional, starting folder, default ""
   name,              // optional, defaults to bucket at save time
-  region,            // s3/s3-compat only, never asked for: see below
+  region,            // s3/s3-compat: derived, never asked; tencent-cos/alibaba-oss: required, typed
   endpoint,          // s3-compat only: the host the user typed
   pathStyle,         // legacy/imported connections only, no longer asked for
 }
@@ -153,6 +159,23 @@ The endpoint is normalized to a bare host (`normalizeEndpoint()` strips a
 pasted `https://` and any path), since it's used both to build URLs and as
 the `chrome.permissions.request` origin pattern.
 
+**Tencent Cloud COS and Alibaba Cloud OSS**: both speak the same S3 dialect
+as `s3`/`s3-compat` — same SigV4 signing, same XML — through their own
+documented S3-compatible endpoints, so they reuse `S3Client` rather than
+getting their own client. `S3Client#host()` switches on `conn.type` to build
+`cos.{region}.myqcloud.com` or `s3.oss-{region}.aliyuncs.com` (bucket goes in
+the subdomain, same virtual-hosted style as AWS — no `endpoint` field, so
+`usesPathStyle()` stays false). Unlike AWS S3, neither exposes a
+region-sniffing global endpoint, so region is a required, always-visible
+field instead of an auto-detected Advanced one — with a `<datalist>` of each
+provider's public regions (id `tencentCosRegions`/`alibabaOssRegions` in
+`sidepanel.html`) as suggestions, not a hard constraint, since new regions
+ship faster than the extension does. For COS, the bucket name
+already includes the APPID suffix the console shows (`my-bucket-1250000000`).
+Both hosts are pre-granted in `host_permissions` (`*.myqcloud.com`,
+`*.aliyuncs.com`) since, unlike a self-hosted S3-compatible endpoint, the
+domain is fixed and known ahead of time.
+
 **Azure Blob Storage**: the connection form takes one field, the storage
 account's connection string (`DefaultEndpointsProtocol=...;AccountName=...;
 AccountKey=...;...`) — `parseConnectionString()` in `lib/azure-client.js`
@@ -176,9 +199,10 @@ JSON responses instead of the XML the other three clients parse.
 
 `host_permissions` is pre-granted for the known providers: `*.amazonaws.com`,
 `*.r2.cloudflarestorage.com`, `storage.googleapis.com`,
-`oauth2.googleapis.com` (GCS token exchange), `*.blob.core.windows.net`. A
-custom S3-compatible endpoint (MinIO, self-hosted) is the one case requested
-at runtime via `chrome.permissions.request` when the connection is saved —
+`oauth2.googleapis.com` (GCS token exchange), `*.blob.core.windows.net`,
+`*.myqcloud.com` (Tencent COS), `*.aliyuncs.com` (Alibaba OSS). A custom
+S3-compatible endpoint (MinIO, self-hosted) is the one case requested at
+runtime via `chrome.permissions.request` when the connection is saved —
 keeps the install-time permission prompt narrow.
 
 ## Key flows
@@ -202,7 +226,8 @@ keeps the install-time permission prompt narrow.
   Text/Markdown is fetched as a blob, shown in an editable textarea, and
   written back with put-object on Save; files over 2MB skip this and point
   at Download.
-- **Share**: a provider URI (`s3://`, `az://`, `gs://`, string only),
+- **Share**: a provider URI (`s3://`, `az://`, `gs://`, `cos://`, `oss://`,
+  string only),
   unsigned HTTP URL (works only if the object/bucket is public), or a signed
   URL (`presignUrl()`/`signedUrlV4()` in `sigv4.js`/`azure-sig.js`/
   `gcs-sig.js`, query-string signing) with a chosen expiry.

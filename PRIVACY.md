@@ -1,6 +1,6 @@
 # Privacy Policy — Cloud Bucket Viewer
 
-Last updated: 2026-09-15
+Last updated: 2026-09-19
 
 ## Summary
 
@@ -12,8 +12,9 @@ code. Everything the extension does happens inside your browser.
 
 Connections you create — a name, a bucket/container name, an optional key
 prefix, an endpoint/region where applicable, and the credential you supply
-(an access key pair, an Azure storage connection string, or a Google Cloud
-service account JSON key).
+(an access key pair for Amazon S3, an S3-compatible endpoint, Tencent Cloud
+COS or Alibaba Cloud OSS; an Azure storage connection string; or a Google
+Cloud service account JSON key).
 
 These are written to `chrome.storage.local`, which lives only on the device
 where you entered them. They are never written to `chrome.storage.sync`, so
@@ -23,9 +24,10 @@ they are not copied to your Google account or to other devices.
 
 Credentials are used solely to sign requests to the storage endpoint that the
 connection itself names — Amazon S3, an S3-compatible endpoint you typed,
-Azure Blob Storage, or Google Cloud Storage. Google Cloud Storage connections
-additionally contact `https://oauth2.googleapis.com` to exchange the service
-account key for an access token, as required by Google.
+Azure Blob Storage, Google Cloud Storage, Tencent Cloud COS, or Alibaba
+Cloud OSS. Google Cloud Storage connections additionally contact
+`https://oauth2.googleapis.com` to exchange the service account key for an
+access token, as required by Google.
 
 No data is sent anywhere else. The developer of this extension receives
 nothing.
@@ -54,7 +56,8 @@ Uninstalling the extension removes all of its stored data.
 - `downloads` — save a file from a bucket to your computer when you click
   Download.
 - Host permissions for AWS, Cloudflare R2, Google Cloud Storage, Google's
-  OAuth token endpoint and Azure Blob Storage — make the storage API calls.
+  OAuth token endpoint, Azure Blob Storage, Tencent Cloud COS and Alibaba
+  Cloud OSS — make the storage API calls.
 - Optional host permissions — requested at the moment you add a custom
   S3-compatible endpoint (MinIO, Wasabi, etc), only for that endpoint, and
   only after you approve the Chrome prompt.
